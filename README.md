@@ -62,6 +62,21 @@ Typical run: ~15-20 s per scan (200-270k triangles) on a 2-core CPU, a few GB RA
 
 Units are the STL's units; scans are assumed to be in **millimetres**.
 
+## Desktop GUI (drag & drop)
+```bash
+pip install -r requirements-gui.txt     # PySide6; the backend requirements must be installed in the same environment
+python gui.py
+```
+Drop binary `.stl` scans onto the left area (or *Add files...*), set each file's arch (Upper / Lower / Single arch; guessed from
+the file name), tune the options on the right and press **Generate**. Outputs are written next to each input as
+`<name>_output.stl` (binary STL). Only binary STL is accepted as input (ASCII STL is rejected); outputs are binary STL.
+With exactly one Upper and one Lower file the *Articulated pair* option makes both bases parallel to the shared bite plane.
+Each row shows its result, including a warning when the mesh is not a simple closed solid.
+
+The GUI (`dentalbase_gui/`) is fully decoupled from the backend: it never imports `dentalbase`; it runs `make_base.py` as a
+subprocess (so it can be cancelled) and reads its output. Backend and GUI can change independently as long as the
+`make_base.py` command line stays the same. Logic tests (no display needed): `python -m unittest tests.test_gui_logic`.
+
 ## Reading the result
 `make_base.py` prints a JSON report. `watertight: true` and `euler: 2` mean a simple closed solid.
 `verify.py` additionally reports genus (0 = no tunnels) and checks the mesh with a second kernel (manifold3d).
@@ -88,5 +103,7 @@ verify.py             printability checks
 dentalbase/pipeline.py   end-to-end make_base() + crown segmentation + island bridging
 dentalbase/dbase.py      geometry primitives (curvature, random walker, geodesics, cut, loop smoothing, base build)
 dentalbase/render.py     preview rendering (matplotlib)
+gui.py, dentalbase_gui/  desktop GUI (PySide6), talks to the backend only through make_base.py
+tests/                   GUI logic tests
 ```
 Use from Python: `from dentalbase.pipeline import make_base; make_base('in.stl', 'out.stl', offset=4.0)`

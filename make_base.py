@@ -22,16 +22,23 @@ def main():
     ap.add_argument('--thickness', type=float, default=3.0, help='base thickness below the lowest scan point in mm (default 3)')
     ap.add_argument('--preview', action='store_true', help='also write a PNG render next to each output')
     ap.add_argument('--pair', nargs=2, metavar=('UPPER', 'LOWER'), help='articulated pair: both bases parallel to the shared bite plane; outputs stay in the scans\' original (bite-registered) coordinates')
+    ap.add_argument('--pair-out', nargs=2, metavar=('UPPER_OUT', 'LOWER_OUT'), help='with --pair: explicit output paths (instead of --outdir); needs a single --offset')
     a = ap.parse_args()
 
     if a.pair:
-        if not a.outdir:
-            ap.error('--pair needs --outdir')
-        os.makedirs(a.outdir, exist_ok=True)
+        if not a.outdir and not a.pair_out:
+            ap.error('--pair needs --outdir or --pair-out')
+        if a.pair_out and len(a.offset) != 1:
+            ap.error('--pair-out needs exactly one --offset')
+        if a.outdir:
+            os.makedirs(a.outdir, exist_ok=True)
         for off in a.offset:
             up, lo = a.pair
-            uo = os.path.join(a.outdir, f"{os.path.splitext(os.path.basename(up))[0]}_base_o{off:g}.stl")
-            lo_o = os.path.join(a.outdir, f"{os.path.splitext(os.path.basename(lo))[0]}_base_o{off:g}.stl")
+            if a.pair_out:
+                uo, lo_o = a.pair_out
+            else:
+                uo = os.path.join(a.outdir, f"{os.path.splitext(os.path.basename(up))[0]}_base_o{off:g}.stl")
+                lo_o = os.path.join(a.outdir, f"{os.path.splitext(os.path.basename(lo))[0]}_base_o{off:g}.stl")
             print(f'\n=== pair (offset {off:g} mm): {up} + {lo}')
             reps = make_pair(up, lo, uo, lo_o, offset=off, smooth_t=a.smooth, loop_sigma=a.loop_sigma, base_thickness=a.thickness)
             for r, dst in zip(reps, (uo, lo_o)):
