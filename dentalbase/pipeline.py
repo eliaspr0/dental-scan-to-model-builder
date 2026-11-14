@@ -1,6 +1,14 @@
-"""End-to-end: raw intraoral scan STL -> watertight flat-base horseshoe dental model STL (geometry only, no ML)."""
+"""End-to-end: raw intraoral scan STL -> watertight flat-base horseshoe dental model STL (geometry only, no ML).
+
+Guarantees (checked after every export, see check_tooth_preservation):
+  * Output is written in the INPUT scan's own coordinate system, so an upper and lower scan that were articulated
+    (bite registered) in the same frame stay articulated.
+  * Tooth geometry is never modified: crown vertices (plus a small margin ring) are copied bit-for-bit from the
+    input, never moved by smoothing and never cut away.
+"""
 import time, json
 import numpy as np, trimesh, scipy.sparse as sp, scipy.sparse.csgraph as csg
+from scipy.spatial import cKDTree
 from . import dbase
 
 
@@ -30,7 +38,8 @@ def segment_crowns(V, F, H, beta=40.0, tau=0.0):
     return p, bv
 
 
-def bridged_trim_field(V, F, mask, bv, offset, border_keepout, smooth_t, t0=None, max_rounds=6, min_tooth_area=2.0):
+def bridged_trim_field(V, F, mask, bv, offset, border_keepout, smooth_t, t0=None, max_rounds=6, min_tooth_area=2.0,
+                       protect_mm=None):
     """trim_field, but if the kept region splits into islands that contain teeth (edentulous gaps, small offsets,
     border keep-out), connect them to the main arch with a shortest surface path and use that path as an extra
     source so the base stays one continuous horseshoe."""
@@ -45,7 +54,8 @@ def bridged_trim_field(V, F, mask, bv, offset, border_keepout, smooth_t, t0=None
     Aw = sp.coo_matrix((wts, (Ac.row, Ac.col)), shape=(n, n)).tocsr()
     bridges = 0
     for rnd in range(max_rounds):
-        g, d_tooth, d_b = dbase.trim_field(V, F, src, bv, offset, border_keepout=border_keepout, smooth_t=smooth_t)
+        g, d_tooth, d_b = dbase.trim_field(V, F, src, bv, offset, border_keepout=border_keepout, smooth_t=smooth_t,
+                                           protect_mm=protect_mm)
         neg = g < 0
         idx = np.where(neg)[0]
         nc, lab = csg.connected_components(A[neg][:, neg], directed=False)
@@ -70,41 +80,113 @@ def bridged_trim_field(V, F, mask, bv, offset, border_keepout, smooth_t, t0=None
     return g, d_tooth, d_b, bridges
 
 
-def make_base(path_in, path_out, offset=4.0, smooth_t=6.0, loop_sigma=1.5, base_thickness=3.0,
-              border_keepout=2.5, verbose=True, return_all=False):
-    t0 = time.time()
+def keep_largest_component(V, F, oid):
+    """Keep the largest connected piece (by faces); returns reindexed V, F, oid."""
+    n = len(V)
+    A = sp.coo_matrix((np.ones(len(F) * 3), (np.r_[F[:, 0], F[:, 1], F[:, 2]], np.r_[F[:, 1], F[:, 2], F[:, 0]])), shape=(n, n))
+    nc, lab = csg.connected_components(A, directed=False)
+    if nc == 1:
+        return V, F, oid
+    fl = lab[F[:, 0]]
+    big = np.bincount(fl).argmax()
+    Fk = F[fl == big]
+    used = np.unique(Fk); remap = -np.ones(n, np.int64); remap[used] = np.arange(len(used))
+    return V[used], remap[Fk], oid[used]
+
+
+def estimate_arch_up(path_in):
+    """Occlusal-plane normal (gingiva -> crowns) of one scan, in the scan's own coordinates."""
     m = dbase.load_clean(path_in)
     V = np.asarray(m.vertices, float); F = np.asarray(m.faces)
     N = dbase.vertex_normals(m)
-    log(t0, f'loaded {len(V)} verts / {len(F)} faces')
     H, _ = dbase.mean_curvature(V, F, N, t=0.15)
-    up = dbase.estimate_up(V, N, H)
-    R, c = dbase.orientation_frame(V, up)
-    V = (V - c) @ R.T
-    log(t0, f'occlusal normal {np.round(up, 3).tolist()}')
+    return dbase.estimate_up(V, N, H)
+
+
+def check_tooth_preservation(V0, mask, out_path, extra_mask=None):
+    """Reload the exported STL and compare against the ORIGINAL scan vertices. Returns exactness stats."""
+    o = trimesh.load(out_path, process=False)
+    Vo = np.asarray(o.vertices, np.float64)
+    tree = cKDTree(Vo)
+    rep = {}
+    for name, mk in (('crown', mask), ('crown_plus_margin', extra_mask)):
+        if mk is None or not mk.any():
+            continue
+        P = V0[mk].astype(np.float32).astype(np.float64)       # STL stores float32
+        d, _ = tree.query(P)
+        rep[f'{name}_vertices'] = int(mk.sum())
+        rep[f'{name}_exact_pct'] = round(float((d == 0).mean() * 100), 4)
+        rep[f'{name}_max_dev_mm'] = round(float(d.max()), 6)
+    return rep
+
+
+def make_base(path_in, path_out, offset=4.0, smooth_t=6.0, loop_sigma=1.5, base_thickness=3.0,
+              border_keepout=2.5, protect_mm=None, up=None, verbose=True, return_all=False):
+    """up: optional occlusal normal (gingiva->crowns) in the scan's own coordinates, e.g. a shared bite-plane normal
+    for an upper/lower pair. protect_mm: crowns + this ring are guaranteed untouched (default min(1, offset/2));
+    pass a negative value to disable (for A/B testing only)."""
+    t0 = time.time()
+    if protect_mm is None:
+        protect_mm = min(1.0, 0.5 * offset)
+    m = dbase.load_clean(path_in)
+    V0 = np.asarray(m.vertices, float); F = np.asarray(m.faces)      # ORIGINAL coordinates: never modified
+    N = dbase.vertex_normals(m)
+    log(t0, f'loaded {len(V0)} verts / {len(F)} faces')
+    H, _ = dbase.mean_curvature(V0, F, N, t=0.15)
+    if up is None:
+        up = dbase.estimate_up(V0, N, H)
+    else:
+        up = np.asarray(up, float) / np.linalg.norm(up)
+    R, c = dbase.orientation_frame(V0, up)
+    V = (V0 - c) @ R.T                                                # working frame (Z = occlusal normal)
+    log(t0, f'occlusal normal (scan coords) {np.round(up, 3).tolist()}')
     p, bv = segment_crowns(V, F, H)
     mask = dbase.clean_tooth_mask(V, F, p)
     log(t0, f'tooth region {mask.sum()} verts')
-    g, d_tooth, d_border, nbridge = bridged_trim_field(V, F, mask, bv, offset, border_keepout, smooth_t, t0=t0)
-    V2, F2 = dbase.cut_mesh(V, F, g)
-    mm = trimesh.Trimesh(V2, F2, process=False)
-    comps = mm.split(only_watertight=False); comps.sort(key=lambda x: -len(x.faces))
-    V2, F2 = np.asarray(comps[0].vertices), np.asarray(comps[0].faces)
+    pm = protect_mm if protect_mm >= 0 else None
+    g, d_tooth, d_border, nbridge = bridged_trim_field(V, F, mask, bv, offset, border_keepout, smooth_t, t0=t0, protect_mm=pm)
+    V2, F2, oid = dbase.cut_mesh(V, F, g)
+    V2, F2, oid = keep_largest_component(V2, F2, oid)
     log(t0, f'trim cut: {len(F2)} faces, {len(dbase.boundary_loops(F2))} boundary loop(s)')
-    D, maxd = dbase.smooth_trim_loop(V2, F2, sigma=loop_sigma)
+    prot_full = (d_tooth <= protect_mm) if protect_mm >= 0 else np.zeros(len(V), bool)
+    prot_cut = np.zeros(len(V2), bool); ok = oid >= 0; prot_cut[ok] = prot_full[oid[ok]]
+    D, maxd = dbase.smooth_trim_loop(V2, F2, sigma=loop_sigma, protect=prot_cut if protect_mm >= 0 else None)
     V3, alpha, it = dbase.safe_displace(V2, F2, D)
     log(t0, f'loop smoothed (max shift {maxd:.2f} mm, {int((alpha < 1).sum())} verts backed off)')
-    # how much of the segmented crown area ended up inside the kept patch? (kept vertices = g<0 in the connected piece)
-    area_all = dbase.vertex_areas(V, F)
-    inside = (g < 0)
-    kept_tooth = float(area_all[mask & inside].sum() / max(area_all[mask].sum(), 1e-9) * 100)
     Vb, Fb, info = dbase.build_base(V3, F2, base_thickness=base_thickness)
-    out = trimesh.Trimesh(Vb, Fb, process=False)
+    # ---- back to the scan's original coordinate system (keeps upper/lower articulation)
+    Vb_o = Vb @ R + c
+    untouched = np.where((oid >= 0) & (np.abs(D).sum(1) == 0))[0]     # never displaced -> copy original coords bit-exactly
+    Vb_o[untouched] = V0[oid[untouched]]
+    out = trimesh.Trimesh(Vb_o, Fb, process=False)
+    out.export(path_out)
+    area_all = dbase.vertex_areas(V, F)
+    kept = np.zeros(len(V), bool); kept[oid[oid >= 0]] = True
+    kept_tooth = float(area_all[mask & kept].sum() / max(area_all[mask].sum(), 1e-9) * 100)
     rep = dict(watertight=bool(out.is_watertight), winding_consistent=bool(out.is_winding_consistent),
                is_volume=bool(out.is_volume), volume_mm3=round(float(out.volume), 1), euler=int(out.euler_number),
-               faces=int(len(Fb)), crown_area_kept_pct=round(kept_tooth, 1), bridges=int(nbridge), extents_mm=np.round(out.extents, 1).tolist(), **{k: (round(v, 2) if isinstance(v, float) else v) for k, v in info.items()})
-    out.export(path_out)
+               faces=int(len(Fb)), crown_area_kept_pct=round(kept_tooth, 2), bridges=int(nbridge),
+               extents_mm=np.round(out.extents, 1).tolist(), occlusal_normal=np.round(up, 4).tolist(),
+               **{k: (round(v, 2) if isinstance(v, float) else v) for k, v in info.items() if k != 'z_base'})
+    rep.update(check_tooth_preservation(V0, mask, path_out, prot_full if protect_mm >= 0 else None))
     log(t0, f'exported {path_out}: {rep}')
     if return_all:
-        return rep, dict(V=V, F=F, H=H, p=p, mask=mask, g=g, Vcut=V3, Fcut=F2, Vb=Vb, Fb=Fb, R=R, c=c)
+        return rep, dict(V0=V0, V=V, F=F, H=H, p=p, mask=mask, g=g, Vb=Vb_o, Fb=Fb, R=R, c=c, oid=oid, D=D, prot=prot_full)
     return rep
+
+
+def make_pair(upper_in, lower_in, upper_out, lower_out, **kw):
+    """Articulated pair: both bases are made parallel to the shared bite (occlusal) plane and both outputs stay in the
+    original (registered) coordinate system. Returns (upper_report, lower_report)."""
+    up_u = estimate_arch_up(upper_in)      # points from upper gingiva toward upper crowns (= downward)
+    up_l = estimate_arch_up(lower_in)      # points from lower gingiva toward lower crowns (= upward)
+    n = up_l - up_u
+    n /= np.linalg.norm(n)
+    ang = float(np.degrees(np.arccos(np.clip(up_l @ -up_u, -1, 1))))
+    print(f'shared occlusal normal {np.round(n, 3).tolist()} (upper/lower estimates differ by {ang:.1f} deg)')
+    if ang > 15:
+        print('  WARNING: the two arches disagree on the occlusal plane by >15 deg; are the scans bite-registered in one frame?')
+    ru = make_base(upper_in, upper_out, up=-n, **kw)
+    rl = make_base(lower_in, lower_out, up=n, **kw)
+    ru['arch_plane_disagreement_deg'] = rl['arch_plane_disagreement_deg'] = round(ang, 2)
+    return ru, rl

@@ -226,7 +226,7 @@ def clean_tooth_mask(V, F, p, thresh=0.5, min_area=4.0):
     return mask
 
 
-def trim_field(V, F, tooth_mask, bv_mask, offset, border_keepout=2.5, smooth_t=3.0, border_smooth_t=6.0, final_t=0.5):
+def trim_field(V, F, tooth_mask, bv_mask, offset, border_keepout=2.5, smooth_t=3.0, border_smooth_t=6.0, final_t=0.5, protect_mm=None):
     """Scalar g (mm): g<0 inside the kept region = within `offset` of the teeth (geodesic) and >= keepout from scan border.
     The offset field and the keep-out field are smoothed separately, then combined (smoothing the max() lets the
     border term leak across the scan edge)."""
@@ -243,6 +243,10 @@ def trim_field(V, F, tooth_mask, bv_mask, offset, border_keepout=2.5, smooth_t=3
     if final_t > 0:
         g2 = smooth_scalar(V, F, g, final_t)
         g = np.where(d_border < 0.75 * border_keepout, np.maximum(g2, 1e-3), g2)
+    if protect_mm is not None and protect_mm >= 0:
+        # tooth guarantee: crowns (+ a small margin ring) are ALWAYS kept, whatever smoothing / border keep-out say.
+        # (cut_mesh treats |g|<0.01 as outside, so use a clearly negative value)
+        g = np.where(d_tooth <= protect_mm, np.minimum(g, -0.05), g)
     return g, d_tooth, d_border
 
 
@@ -281,8 +285,9 @@ def cut_mesh(V, F, g):
     V2 = np.vstack(newV)
     # compact
     used = np.unique(F2); remap = -np.ones(len(V2), np.int64); remap[used] = np.arange(len(used))
+    oid = np.where(used < len(V), used, -1)          # id in the ORIGINAL mesh, or -1 for vertices inserted on the cut
     V2 = V2[used]; F2 = remap[F2]
-    return V2, F2
+    return V2, F2, oid
 
 
 def boundary_loops(F, V=None):
@@ -315,7 +320,7 @@ def main_loop(F):
     return max(loops, key=len), loops
 
 
-def smooth_trim_loop(V, F, sigma=1.5, falloff=5.0, h=0.1):
+def smooth_trim_loop(V, F, sigma=1.5, falloff=5.0, h=0.1, protect=None):
     """Gaussian-smooth the trim loop along arc length (mm); extend the loop displacement into the surface as a
     harmonic field that is zero farther than `falloff` mm from the loop (damps jitter, avoids fold-overs).
     Returns the per-vertex displacement field D and the max loop displacement (mm)."""
@@ -335,6 +340,9 @@ def smooth_trim_loop(V, F, sigma=1.5, falloff=5.0, h=0.1):
     n = len(V)
     dist, _ = cKDTree(P).query(V)
     fixed = np.zeros(n, bool); fixed[L] = True; fixed |= dist > falloff
+    if protect is not None:                       # tooth zone: displacement is exactly 0 (pinned)
+        fixed |= protect
+        delta[protect[L]] = 0.0
     val = np.zeros((n, 3)); val[L] = delta
     # positive edge weights (1/length): robust on sliver triangles, tiny edges tie their endpoints together
     he = np.unique(np.sort(np.vstack([F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]]), axis=1), axis=0)

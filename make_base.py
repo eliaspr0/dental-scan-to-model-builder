@@ -5,22 +5,42 @@ Examples:
   python make_base.py scan_upper.stl out_upper.stl
   python make_base.py scan_lower.stl out_lower.stl --offset 3 --preview
   python make_base.py scans/*.stl --outdir out --offset 2 4 6      # batch, several offsets
+  python make_base.py --pair upper.stl lower.stl --outdir out        # articulated pair: shared bite plane, original coordinates
 """
 import argparse, json, os, sys, glob
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from dentalbase.pipeline import make_base
+from dentalbase.pipeline import make_base, make_pair
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('inputs', nargs='+', help='input STL (then output STL), or several input STLs with --outdir')
+    ap.add_argument('inputs', nargs='*', help='input STL (then output STL), or several input STLs with --outdir')
     ap.add_argument('--outdir', help='batch mode: write <name>_base_o<offset>.stl here')
     ap.add_argument('--offset', type=float, nargs='+', default=[4.0], help='gingiva margin height in mm (geodesic offset from crowns); several values = several outputs (default 4)')
     ap.add_argument('--smooth', type=float, default=6.0, help='trimline field smoothing (default 6)')
     ap.add_argument('--loop-sigma', type=float, default=1.5, help='trimline arc-length smoothing in mm (default 1.5)')
     ap.add_argument('--thickness', type=float, default=3.0, help='base thickness below the lowest scan point in mm (default 3)')
     ap.add_argument('--preview', action='store_true', help='also write a PNG render next to each output')
+    ap.add_argument('--pair', nargs=2, metavar=('UPPER', 'LOWER'), help='articulated pair: both bases parallel to the shared bite plane; outputs stay in the scans\' original (bite-registered) coordinates')
     a = ap.parse_args()
+
+    if a.pair:
+        if not a.outdir:
+            ap.error('--pair needs --outdir')
+        os.makedirs(a.outdir, exist_ok=True)
+        for off in a.offset:
+            up, lo = a.pair
+            uo = os.path.join(a.outdir, f"{os.path.splitext(os.path.basename(up))[0]}_base_o{off:g}.stl")
+            lo_o = os.path.join(a.outdir, f"{os.path.splitext(os.path.basename(lo))[0]}_base_o{off:g}.stl")
+            print(f'\n=== pair (offset {off:g} mm): {up} + {lo}')
+            reps = make_pair(up, lo, uo, lo_o, offset=off, smooth_t=a.smooth, loop_sigma=a.loop_sigma, base_thickness=a.thickness)
+            for r, dst in zip(reps, (uo, lo_o)):
+                print(os.path.basename(dst), json.dumps({k: r[k] for k in ('watertight', 'euler', 'crown_exact_pct', 'crown_max_dev_mm', 'crown_area_kept_pct')}))
+                if not r['watertight'] or r['euler'] != 2:
+                    print('  WARNING: not a simple closed solid (watertight=%s, euler=%s). Run verify.py.' % (r['watertight'], r['euler']))
+        return
+    if not a.inputs:
+        ap.error('give INPUT.stl OUTPUT.stl, or several STLs with --outdir, or --pair UPPER LOWER --outdir DIR')
 
     if a.outdir:
         os.makedirs(a.outdir, exist_ok=True)

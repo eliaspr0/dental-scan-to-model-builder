@@ -10,6 +10,19 @@ for path in sys.argv[1:]:
     print(f'  volume {mm.volume:.1f} mm3  bodies {mm.body_count}  euler {mm.euler_number}  genus {(2 - mm.euler_number) // 2 if mm.is_watertight else "n/a"}  (genus 0 = no tunnels)')
     mf = manifold3d.Manifold(manifold3d.Mesh(vert_properties=np.asarray(mm.vertices, np.float32), tri_verts=np.asarray(mm.faces, np.uint32)))
     print(f'  manifold3d: {mf.status()}  empty={mf.is_empty()}')
-    z = mm.vertices[:, 2]
-    print(f'  flat base vertices at zmin: {int(np.isclose(z, z.min(), atol=1e-6).sum())}  extents {np.round(mm.extents, 1).tolist()} mm')
+    # flat base: the largest group of coplanar faces (outputs keep the scan's original orientation, so the base is tilted)
+    key = np.round(mm.face_normals, 3); u, inv = np.unique(key, axis=0, return_inverse=True)
+    area = np.bincount(inv, weights=mm.area_faces); k = area.argmax(); sel = inv == k
+    nrm = mm.face_normals[sel].mean(0); nrm /= np.linalg.norm(nrm)
+    dist = mm.triangles_center[sel] @ nrm
+    print(f'  flat base: area {area[k]:.0f} mm2, normal {np.round(nrm, 4).tolist()}, planarity spread {np.ptp(dist):.2e} mm, extents {np.round(mm.extents, 1).tolist()} mm')
     print(f'  degenerate faces (<1e-9 mm2): {int((mm.area_faces < 1e-9).sum())}')
+    try:
+        import pymeshlab
+        ms = pymeshlab.MeshSet(); ms.load_new_mesh(path)
+        ms.apply_filter('meshing_remove_duplicate_vertices')
+        ms.apply_filter('compute_selection_by_self_intersections_per_face')
+        n = ms.current_mesh().selected_face_number()
+        print(f'  self-intersecting faces (MeshLab): {n}' + ('' if n == 0 else '   <-- slicer repair needed / inspect'))
+    except Exception as e:
+        print('  self-intersection check skipped (pip install pymeshlab; on Linux also: apt install libopengl0)')

@@ -1,7 +1,17 @@
-# dental-base-model
+# dental-base-model  (v0.2)
 
 Raw intraoral scan (STL, one arch) -> watertight, flat-base, horseshoe-style dental model (STL).
 Pure geometry processing, **no machine learning, no GPU, no model weights**.
+
+## Guarantees (v0.2) - checked automatically after every export
+- **Articulation is preserved.** The output STL is written in the *input scan's own coordinate system*. An upper and
+  a lower scan that were bite-registered in one frame stay in occlusion when loaded together (checked: minimum
+  upper-lower gap identical before/after). Use `--pair` so both bases are also parallel to the shared bite plane.
+- **Tooth geometry is not altered.** Crown vertices plus a small margin ring are copied bit-for-bit from the input:
+  never smoothed, moved, remeshed or cut away. The report prints `crown_exact_pct` (should be 100.0) and
+  `crown_max_dev_mm` (should be 0.0), measured by reloading the exported STL and comparing with the input.
+  (v0.1 did NOT guarantee this: its loop smoothing displaced 19-60% of crown vertices by up to ~0.6 mm.)
+- Only gingiva between the margin and the trimline is modified (cut, loop-smoothed), plus the added wall and base.
 
 ## What it does
 1. Cleans the scan (merge duplicate vertices, drop tiny fragments).
@@ -27,6 +37,9 @@ mapbox-earcut, networkx, matplotlib, pillow). No compiler needed on common platf
 ```bash
 # one scan -> one model
 python make_base.py upper_scan.stl upper_base.stl
+
+# articulated pair (recommended for upper+lower): shared bite plane, original coordinates kept
+python make_base.py --pair upper_scan.stl lower_scan.stl --outdir out --offset 4
 
 # change margin height, add a PNG preview
 python make_base.py lower_scan.stl lower_base.stl --offset 3 --preview
@@ -54,17 +67,19 @@ Units are the STL's units; scans are assumed to be in **millimetres**.
 `verify.py` additionally reports genus (0 = no tunnels) and checks the mesh with a second kernel (manifold3d).
 
 ## Known limitations (be aware before relying on it)
-- **Input must be a single-arch scan with one open border** (the usual cropped intraoral scan). A closed/watertight input
-  has no border to seed the gum from and will fail.
-- **Handles/tunnels already present in the raw scan are not removed.** In the test set the lower scan has genus 3;
-  trimming removed one and the output kept two tunnels (output `euler: -2`). The CLI prints a warning when `euler != 2`.
-  Planned fix: detect and cap handles before building the base.
-- The lower test scan at `--offset 2` produced a non-manifold result (cause not yet found). Offsets 4 and 6 were watertight.
-- Self-intersection checking is not part of `verify.py`; a manifold solid is not proof of no self-intersections.
-  Open the result in your slicer and run its repair/check as well.
-- Tested on only two scans (one upper, one lower). Crowding, braces, missing teeth, restorations are untested.
-  Margin accuracy has not been measured against labelled ground truth; judge the preview before printing.
+- **Local wall self-intersections near the ragged distal ends of a scan (found with the MeshLab check).** On the
+  lower test scan the exported solid has ~270-320 self-intersecting faces (clusters at the posterior ends, where the
+  vertical wall passes through other geometry); on the upper ~15 tiny ones. The raw scans have 6 and 0. Tooth surfaces are
+  unaffected, but the base wall there needs repair (slicer repair / future fix) before printing.
+- **Lower scan, offset 4, default settings: the exported mesh is not watertight** in v0.2 (cap triangulation of a
+  self-crossing trimline polygon). Offset 4 with `--loop-sigma 3` gave a watertight but still self-intersecting result.
+  The CLI prints a warning whenever `euler != 2`.
+- **Handles/tunnels already present in the raw scan are not removed** (the lower test scan has genus 3).
+- Lower scan at `--offset 2` was non-manifold in v0.1; not re-fixed.
+- **Input must be a single-arch scan with one open border** (usual cropped intraoral scan).
+- Tested on only two scans; margin accuracy not measured against labelled ground truth. Check every preview.
 - The flat base sits below the lowest scan point, so arches with tall posterior ends get tall posterior blocks.
+- Optional self-intersection check: `pip install pymeshlab` (Linux also needs `apt install libopengl0`); `verify.py` uses it if present.
 
 ## Layout
 ```
