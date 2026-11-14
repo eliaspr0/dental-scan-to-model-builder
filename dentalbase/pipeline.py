@@ -94,6 +94,14 @@ def keep_largest_component(V, F, oid):
     return V[used], remap[Fk], oid[used]
 
 
+def resample_closed_xy(P, h):
+    """Resample a closed polyline every h mm (plan view), starting at P[0]."""
+    seg = np.linalg.norm(np.roll(P, -1, 0) - P, axis=1); s = np.r_[0, np.cumsum(seg)]
+    su = np.linspace(0, s[-1], max(int(round(s[-1] / h)), 8), endpoint=False)
+    Pc = np.vstack([P, P[:1]])
+    return np.column_stack([np.interp(su, s, Pc[:, k]) for k in range(2)])
+
+
 def estimate_arch_up(path_in):
     """Occlusal-plane normal (gingiva -> crowns) of one scan, in the scan's own coordinates."""
     m = dbase.load_clean(path_in)
@@ -120,8 +128,8 @@ def check_tooth_preservation(V0, mask, out_path, extra_mask=None):
     return rep
 
 
-def make_base(path_in, path_out, offset=4.0, smooth_t=6.0, loop_sigma=1.5, base_thickness=3.0,
-              border_keepout=2.5, protect_mm=None, up=None, verbose=True, return_all=False):
+def make_base(path_in, path_out, offset=4.5, smooth_t=6.0, loop_sigma=1.5, base_thickness=0.5,
+              border_keepout=2.5, protect_mm=None, up=None, trim_mode='base', edge_sigma=0.75, edge_band=1.0, verbose=True, return_all=False):
     """up: optional occlusal normal (gingiva->crowns) in the scan's own coordinates, e.g. a shared bite-plane normal
     for an upper/lower pair. protect_mm: crowns + this ring are guaranteed untouched (default min(1, offset/2));
     pass a negative value to disable (for A/B testing only)."""
@@ -149,11 +157,27 @@ def make_base(path_in, path_out, offset=4.0, smooth_t=6.0, loop_sigma=1.5, base_
     V2, F2, oid = keep_largest_component(V2, F2, oid)
     log(t0, f'trim cut: {len(F2)} faces, {len(dbase.boundary_loops(F2))} boundary loop(s)')
     prot_full = (d_tooth <= protect_mm) if protect_mm >= 0 else np.zeros(len(V), bool)
-    prot_cut = np.zeros(len(V2), bool); ok = oid >= 0; prot_cut[ok] = prot_full[oid[ok]]
-    D, maxd = dbase.smooth_trim_loop(V2, F2, sigma=loop_sigma, protect=prot_cut if protect_mm >= 0 else None)
-    V3, alpha, it = dbase.safe_displace(V2, F2, D)
-    log(t0, f'loop smoothed (max shift {maxd:.2f} mm, {int((alpha < 1).sum())} verts backed off)')
-    Vb, Fb, info = dbase.build_base(V3, F2, base_thickness=base_thickness)
+    bottom_path = None
+    if trim_mode == 'base':
+        # Surface-preserving mode (default). (1) Edge de-jitter: the raw isoline zig-zags at triangle scale (~0.05-0.25 mm),
+        # which shows up as ripples on the wall. Only the cut edge is relaxed (small sigma), and its shift fades out within
+        # `edge_band` mm of the edge, so the gingiva/teeth farther than that stay bit-exact. (2) The base outline is
+        # smoothed with the user's trimline smoothing; the wall is lofted between the two.
+        prot_cut = np.zeros(len(V2), bool); ok = oid >= 0; prot_cut[ok] = prot_full[oid[ok]]
+        D, maxd = dbase.smooth_trim_loop(V2, F2, sigma=edge_sigma, falloff=edge_band, protect=prot_cut if protect_mm >= 0 else None)
+        V3, alpha, it = dbase.safe_displace(V2, F2, D)
+        D = V3 - V2
+        L, Ls = dbase.smoothed_loop_positions(V3, F2, loop_sigma)
+        bottom_path = resample_closed_xy(Ls[:, :2], 0.25)
+        moved = int((np.abs(D).sum(1) > 0).sum())
+        log(t0, f'trim edge de-jittered (max shift {float(np.abs(D).max()):.2f} mm, {moved} vertices within {edge_band:g} mm of the edge); '
+                f'base outline smoothed (sigma {loop_sigma:g} mm); rest of the scan untouched')
+    else:                                                               # legacy 'deform' mode: also blends the shift into the surface
+        prot_cut = np.zeros(len(V2), bool); ok = oid >= 0; prot_cut[ok] = prot_full[oid[ok]]
+        D, maxd = dbase.smooth_trim_loop(V2, F2, sigma=loop_sigma, protect=prot_cut if protect_mm >= 0 else None)
+        V3, alpha, it = dbase.safe_displace(V2, F2, D)
+        log(t0, f'loop smoothed (max shift {maxd:.2f} mm, {int((alpha < 1).sum())} verts backed off)')
+    Vb, Fb, info = dbase.build_base(V3, F2, base_thickness=base_thickness, bottom_path=bottom_path)
     # ---- back to the scan's original coordinate system (keeps upper/lower articulation)
     Vb_o = Vb @ R + c
     untouched = np.where((oid >= 0) & (np.abs(D).sum(1) == 0))[0]     # never displaced -> copy original coords bit-exactly

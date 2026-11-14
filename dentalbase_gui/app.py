@@ -128,15 +128,14 @@ class MainWindow(QMainWindow):
         opts = QGroupBox('Options'); form = QFormLayout(opts)
         self.sp_offset = self._spin(0.5, 15.0, 0.5, J.DEFAULTS['offset'], ' mm', 1,
                                     'Gingiva margin height: geodesic distance from the crowns to the trimline, where the base starts.')
-        self.sp_smooth = self._spin(0.0, 30.0, 1.0, J.DEFAULTS['smooth'], '', 1,
-                                    'Smoothing of the trimline field before cutting. Higher = rounder, less hugging of the gum line.')
+        self.sp_smooth = self._spin(0.0, 30.0, 1.0, J.DEFAULTS['smooth'], '', 1, '')   # advanced; not shown (CLI --smooth)
+        self.sp_smooth.setVisible(False)
         self.sp_sigma = self._spin(0.0, 10.0, 0.5, J.DEFAULTS['loop_sigma'], ' mm', 1,
-                                   'Smoothing of the final trimline curve (arc-length Gaussian) before extrusion.')
+                                   'Smooths the trimline and the wall below it so the extruded wall is smooth. Only a ~1 mm strip along the cut edge is touched; the gingiva and teeth above it are not modified.')
         self.sp_thick = self._spin(0.5, 20.0, 0.5, J.DEFAULTS['thickness'], ' mm', 1,
                                    'Base thickness below the lowest point of the scan; the base bottom is flat.')
         form.addRow('Gingiva margin height', self.sp_offset)
-        form.addRow('Trimline field smoothing', self.sp_smooth)
-        form.addRow('Trimline curve smoothing', self.sp_sigma)
+        form.addRow('Trimline smoothing', self.sp_sigma)
         form.addRow('Base thickness', self.sp_thick)
         self.btn_reset = QPushButton('Reset to defaults'); self.btn_reset.clicked.connect(self._reset_defaults)
         form.addRow('', self.btn_reset)

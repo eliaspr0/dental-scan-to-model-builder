@@ -326,6 +326,8 @@ def smooth_trim_loop(V, F, sigma=1.5, falloff=5.0, h=0.1, protect=None):
     Returns the per-vertex displacement field D and the max loop displacement (mm)."""
     L, _ = main_loop(F)
     P = V[L]
+    if sigma <= 0:                                  # no smoothing requested: zero displacement (was a ZeroDivisionError)
+        return np.zeros_like(V), 0.0
     seg = np.linalg.norm(np.roll(P, -1, 0) - P, axis=1)
     s = np.concatenate([[0], np.cumsum(seg)])
     total = s[-1]
@@ -367,7 +369,7 @@ def flipped_faces(V0, V1, F):
     return int((np.einsum('ij,ij->i', fn(V0), fn(V1)) <= 0).sum())
 
 
-def build_base(V, F, base_thickness=3.0, z_base=None):
+def build_base(V, F, base_thickness=3.0, z_base=None, bottom_path=None):
     """Closed solid: scan patch + vertical wall below the trim loop + flat cap at z_base. Returns (V, F, info)."""
     import mapbox_earcut as earcut
     L, loops = main_loop(F)
@@ -377,18 +379,34 @@ def build_base(V, F, base_thickness=3.0, z_base=None):
     if z_base is None:
         z_base = float(V[:, 2].min() - base_thickness)
     n = len(L)
-    bot = top.copy(); bot[:, 2] = z_base
     nv = len(V)
-    Vall = np.vstack([V, bot])
-    bidx = nv + np.arange(n)
-    # wall: boundary half-edge a->b exists in patch, wall must contain b->a
-    a = L; b = np.roll(L, -1)
-    a2 = bidx; b2 = np.roll(bidx, -1)
-    wall = np.vstack([np.column_stack([b, a, a2]), np.column_stack([b, a2, b2])])
-    # cap: triangulate bottom polygon (xy), then orient normals downward
-    xy = bot[:, :2].astype(np.float64)
-    tri = earcut.triangulate_float64(xy, np.array([n], dtype=np.uint32)).reshape(-1, 3)
-    cap = bidx[tri]
+    if bottom_path is None:
+        # vertical wall: bottom vertex directly below each trimline vertex
+        bot = top.copy(); bot[:, 2] = z_base
+        Vall = np.vstack([V, bot]); bidx = nv + np.arange(n)
+        a = L; b = np.roll(L, -1); a2 = bidx; b2 = np.roll(bidx, -1)
+        # boundary half-edge a->b exists in patch, wall must contain b->a
+        wall = np.vstack([np.column_stack([b, a, a2]), np.column_stack([b, a2, b2])])
+    else:
+        # lofted wall: the bottom outline has its own (evenly spaced, smooth) vertices; wall strip is stitched between the
+        # raw trimline (top) and the smooth outline (bottom) by plan-view arc length, so it cannot fold or twist.
+        Q = np.asarray(bottom_path, float)
+        m = len(Q)
+        bot = np.column_stack([Q, np.full(m, z_base)])
+        Vall = np.vstack([V, bot]); bidx = nv + np.arange(m)
+        def param(P):
+            sg = np.linalg.norm(np.roll(P, -1, 0) - P, axis=1); c = np.r_[0, np.cumsum(sg)]; return c / c[-1]
+        t = param(top[:, :2]); u = param(Q)           # t[0]=u[0]=0 ... t[n]=u[m]=1 (closed)
+        tris = []; i = j = 0
+        while i < n or j < m:
+            if i < n and (j >= m or t[i + 1] <= u[j + 1]):
+                tris.append([L[(i + 1) % n], L[i], bidx[j % m]]); i += 1          # advance along the top edge a->b
+            else:
+                tris.append([L[i % n], bidx[j % m], bidx[(j + 1) % m]]); j += 1   # advance along the bottom edge c->d
+        wall = np.array(tris)
+    xy = Vall[nv:, :2].astype(np.float64)
+    tri = earcut.triangulate_float64(xy, np.array([len(xy)], dtype=np.uint32)).reshape(-1, 3)
+    cap = nv + tri
     p0, p1, p2 = xy[tri[:, 0]], xy[tri[:, 1]], xy[tri[:, 2]]
     area2 = (p1[:, 0] - p0[:, 0]) * (p2[:, 1] - p0[:, 1]) - (p2[:, 0] - p0[:, 0]) * (p1[:, 1] - p0[:, 1])
     cap = np.where((area2 > 0)[:, None], cap[:, ::-1], cap)
@@ -441,3 +459,20 @@ def safe_displace(V, F, D, max_iter=40):
         alpha[m] *= 0.5
     Vn = V + alpha[:, None] * D
     return Vn, alpha, max_iter
+
+
+def smoothed_loop_positions(V, F, sigma, h=0.1):
+    """Arc-length Gaussian smoothing of the boundary loop, evaluated at the loop's own vertices (no surface change).
+    Returns (loop vertex ids, smoothed positions)."""
+    L, _ = main_loop(F)
+    P = V[L]
+    if sigma <= 0:
+        return L, P.copy()
+    seg = np.linalg.norm(np.roll(P, -1, 0) - P, axis=1)
+    s = np.concatenate([[0], np.cumsum(seg)]); total = s[-1]
+    su = np.linspace(0, total, int(round(total / h)), endpoint=False)
+    Pc = np.vstack([P, P[:1]])
+    U = np.column_stack([np.interp(su, s, Pc[:, k]) for k in range(3)])
+    Us = np.column_stack([gaussian_filter1d(U[:, k], sigma / h, mode='wrap') for k in range(3)])
+    Usc = np.vstack([Us, Us[:1]]); suc = np.concatenate([su, [total]])
+    return L, np.column_stack([np.interp(s[:-1], suc, Usc[:, k]) for k in range(3)])
