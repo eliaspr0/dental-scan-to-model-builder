@@ -1,0 +1,10 @@
+numpy>=1.26
+scipy>=1.11
+trimesh>=4.0
+libigl>=2.5
+manifold3d>=2.5
+mapbox-earcut>=1.0
+matplotlib>=3.7
+pillow>=10.0
+networkx>=3.0
+potpourri3d>=1.0
