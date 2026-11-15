@@ -7,16 +7,16 @@ import os
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QRectF, QSettings, Qt, QProcess, QProcessEnvironment, QUrl, Signal
+from PySide6.QtCore import QRectF, QSettings, QTimer, Qt, QProcess, QProcessEnvironment, QUrl, Signal
 from PySide6.QtGui import QColor, QDesktopServices, QPainter, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QCheckBox, QComboBox, QDoubleSpinBox, QFrame, QHBoxLayout, QHeaderView, QLabel,
-    QMainWindow, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QFileDialog,
+    QMainWindow, QMessageBox, QPushButton, QScrollArea, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QFileDialog,
 )
 
 from . import jobs as J
 from . import theme
-from .progress import ProgressDialog
+from .progress import ProgressPanel
 from .stl_io import check_binary_stl, guess_role, is_stl_name, output_path
 
 BACKEND_SCRIPT = Path(__file__).resolve().parent.parent / 'make_base.py'
@@ -226,11 +226,14 @@ class MainWindow(QMainWindow):
         cols = QHBoxLayout(); cols.setSpacing(18); cols.addWidget(card1, 1); cols.addWidget(card2, 0)
         outer.addLayout(cols, 1)
         outer.addWidget(card3)
-        self.setCentralWidget(root)
+        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setFrameShape(QFrame.NoFrame); scroll.setWidget(root)
+        scroll.setStyleSheet('QScrollArea { background: #ffffff; }')     # small screens: scroll instead of squeezing
+        self.setCentralWidget(scroll)
 
-        self.dialog = ProgressDialog(self)
+        self.dialog = ProgressPanel()                 # lives inside the window, under the Generate bar
         self.dialog.cancel_requested.connect(self.cancel)
-        self.dialog.open_folder_requested.connect(self._open_folder)
+        outer.addWidget(self.dialog)
+        QTimer.singleShot(0, lambda: card2.setMinimumHeight(card2.height()))   # keep the settings text from being squeezed
         self.statusBar().showMessage('Ready')
 
     @staticmethod
@@ -370,7 +373,12 @@ class MainWindow(QMainWindow):
         self._total_jobs, self._done_jobs = len(plan), 0
         self.btn_open.setEnabled(False)
         self._summaries = []
-        self.dialog.start(self._total_jobs); self.dialog.show(); self.dialog.raise_()
+        was_hidden = not self.dialog.isVisible()
+        self.dialog.start(self._total_jobs)
+        if was_hidden and not self.isMaximized() and not self.isFullScreen():
+            want = self.height() + self.dialog.sizeHint().height() + 64       # make room for the panel (+ result lines)
+            scr = self.screen().availableGeometry().height() - 40 if self.screen() else want
+            self.resize(self.width(), min(want, scr))
         for p, _ in files:
             self._set_status(p, 'Queued')
         self._log(f'--- Generating {self._total_jobs} job(s) with {self.options()}')
@@ -480,6 +488,7 @@ class MainWindow(QMainWindow):
         elif not ok:
             msg = 'Some files could not be processed. Open “Show details” to see why.\n' + msg
         self.dialog.finish(msg, ok and have_out)
+        self.statusBar().showMessage('Finished' if ok else 'Stopped', 8000)
         self.lbl_result.setText(('Finished. ' if ok else 'Stopped. ') + f'{self._done_jobs} of {self._total_jobs} done. Results are next to your scans (“_output”).')
 
     def _open_folder(self):

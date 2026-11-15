@@ -72,7 +72,7 @@ python gui.py
 ```
 The window walks through three steps: **1 Add your scans** (drop binary `.stl` files or *Choose files...*; the jaw is guessed
 from the file name), **2 Choose your settings** (each setting is explained in plain language) and **3 Generate**.
-While it runs, a progress window shows every processing step live (with elapsed time and an optional detailed log); the
+While it runs, a progress panel under Generate shows every processing step live (with elapsed time and an optional detailed log); the
 backend prints `@@STAGE i/n label` marker lines for this. Outputs are written next to each input as
 `<name>_output.stl` (binary STL). Only binary STL is accepted as input (ASCII STL is rejected); outputs are binary STL.
 With exactly one Upper and one Lower file the *articulated pair* option makes both bases parallel to the shared bite plane.
