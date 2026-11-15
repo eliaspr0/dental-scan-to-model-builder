@@ -12,7 +12,7 @@ jobs:
       matrix:
         include:
           - { os: macos-14,        name: macOS-AppleSilicon }
-          - { os: macos-13,        name: macOS-Intel }
+          - { os: macos-15-intel,   name: macOS-Intel }
           - { os: windows-latest,  name: Windows }
     runs-on: ${{ matrix.os }}
     steps:
