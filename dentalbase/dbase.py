@@ -441,6 +441,52 @@ def _is_closed_manifold(F):
     return bool((c == 2).all())
 
 
+def _crossing_pairs(P):
+    """Index pairs (i, j), i < j, of crossing non-adjacent segments of the closed polyline P (n,2)."""
+    n = len(P); A = P; B = np.roll(P, -1, 0); hits = []
+    def orient(a, b, c):
+        return (b[..., 0] - a[..., 0]) * (c[..., 1] - a[..., 1]) - (b[..., 1] - a[..., 1]) * (c[..., 0] - a[..., 0])
+    j = np.arange(n)
+    for i in range(n):
+        ok = (np.abs(j - i) > 1) & (np.abs(j - i) < n - 1) & (j > i)
+        if not ok.any():
+            continue
+        d1 = orient(A[i], B[i], A[ok]); d2 = orient(A[i], B[i], B[ok]); d3 = orient(A[ok], B[ok], A[i]); d4 = orient(A[ok], B[ok], B[i])
+        for jj in j[ok][(d1 * d2 < 0) & (d3 * d4 < 0)]:
+            hits.append((i, int(jj)))
+    return hits
+
+
+def simple_outline(xy, window_mm=3.0, sigma_mm=1.5, max_iter=6):
+    """Return a copy of the closed plan-view outline xy (n,2) without self-crossings. Only the stretches around crossings
+    (a tiny hairpin or kink in the trimline) are smoothed, with a strength that doubles until the crossing is gone; the
+    rest of the outline is returned unchanged. Raises ValueError if it cannot be made simple."""
+    xy = np.array(xy, float); n = len(xy)
+    for it in range(max_iter):
+        hits = _crossing_pairs(xy)
+        if not hits:
+            return xy
+        seg = np.linalg.norm(np.roll(xy, -1, 0) - xy, axis=1); s = np.r_[0.0, np.cumsum(seg)]; Ptot = s[-1]
+        sig = sigma_mm * (2 ** it); out = xy.copy()
+        for i, j in hits:
+            # window = the shorter arc between the crossing segments, padded by window_mm on both sides
+            d = s[j] - s[i]
+            a, b = (i, j) if d <= Ptot - d else (j, i + n)
+            lo = a; hi = b + 1
+            while (s[a % n] - s[(lo - 1) % n]) % Ptot < window_mm and lo > a - n // 2: lo -= 1
+            while (s[(hi) % n] - s[b % n]) % Ptot < window_mm and hi < b + n // 2: hi += 1
+            idx = np.arange(lo, hi + 1) % n
+            t = np.cumsum(np.r_[0.0, np.linalg.norm(np.diff(xy[np.r_[idx, idx[-1]]][:len(idx)], axis=0), axis=1)])
+            W = np.exp(-0.5 * ((t[:, None] - t[None, :]) / sig) ** 2); W /= W.sum(1, keepdims=True)
+            sm = W @ xy[idx]
+            ramp = np.clip(np.minimum(t, t[-1] - t) / max(window_mm, 1e-9), 0, 1); ramp = 0.5 - 0.5 * np.cos(np.pi * ramp)
+            out[idx] = xy[idx] * (1 - ramp[:, None]) + sm * ramp[:, None]
+        xy = out
+    if _crossing_pairs(xy):
+        raise ValueError('base outline crosses itself and could not be smoothed apart')
+    return xy
+
+
 def build_base_graded(V, F, base_thickness=0.5, z_base=None, cap_area=0.3, row_lo=0.12, row_hi=0.7, grow=1.7, first=0.12):
     """Closed solid with an evenly meshed wall and base. The vertical wall is meshed in its unrolled (arc length, height)
     plane from rows that get coarser with depth, so triangles stay well shaped (no long slivers); the flat base is a
@@ -448,7 +494,7 @@ def build_base_graded(V, F, base_thickness=0.5, z_base=None, cap_area=0.3, row_l
     import triangle as tr
     L, loops = main_loop(F)
     if len(loops) != 1:
-        return None
+        raise ValueError('trimline is not a single loop')
     nv = len(V); top = V[L]; n = len(L)
     if z_base is None:
         z_base = float(V[:, 2].min() - base_thickness)
@@ -458,9 +504,12 @@ def build_base_graded(V, F, base_thickness=0.5, z_base=None, cap_area=0.3, row_l
     s_top[1:] = np.maximum.accumulate(s_top[1:] + 1e-7 * np.arange(1, n + 1))   # strictly increasing
     P = s_top[-1]
     xs = np.r_[xy[:, 0], xy[0, 0]]; ys = np.r_[xy[:, 1], xy[0, 1]]; zs = np.r_[top[:, 2], top[0, 2]]
+    bxy = simple_outline(xy)                                  # == xy unless the trimline folds over itself in plan view
+    bxs = np.r_[bxy[:, 0], bxy[0, 0]]; bys = np.r_[bxy[:, 1], bxy[0, 1]]
+    leaning = float(np.abs(bxy - xy).max())
     H = zs - z_base
     if H.min() <= 1e-6:
-        return None
+        raise ValueError('trimline reaches the base plane')
     Href = float(np.percentile(H, 90))
     d = [0.0]; step = first
     while d[-1] < Href:
@@ -495,7 +544,9 @@ def build_base_graded(V, F, base_thickness=0.5, z_base=None, cap_area=0.3, row_l
             if k == 0:
                 vid.append(L[j])
             else:
-                x = float(np.interp(sv, s_top_ext, xs)); y = float(np.interp(sv, s_top_ext, ys))
+                w = u[k]
+                x = (1 - w) * float(np.interp(sv, s_top_ext, xs)) + w * float(np.interp(sv, s_top_ext, bxs))
+                y = (1 - w) * float(np.interp(sv, s_top_ext, ys)) + w * float(np.interp(sv, s_top_ext, bys))
                 zz = z if k < K else z_base
                 new_xyz.append((x, y, zz)); vid.append(nxt); nxt += 1
         # closing point at s=P (same 3-D vertex as the row's first point)
@@ -509,7 +560,7 @@ def build_base_graded(V, F, base_thickness=0.5, z_base=None, cap_area=0.3, row_l
         segs.append((pt_row_start[k], pt_row_start[k + 1])); segs.append((seam_end[k], seam_end[k + 1]))
     out = tr.triangulate(dict(vertices=pts2, segments=np.array(segs)), 'p')
     if len(out['vertices']) != len(pts2):
-        return None
+        raise ValueError('wall triangulation changed the vertex set')
     T = out['triangles']
     p0, p1, p2 = pts2[T[:, 0]], pts2[T[:, 1]], pts2[T[:, 2]]
     a2 = (p1[:, 0] - p0[:, 0]) * (p2[:, 1] - p0[:, 1]) - (p2[:, 0] - p0[:, 0]) * (p1[:, 1] - p0[:, 1])
@@ -521,7 +572,7 @@ def build_base_graded(V, F, base_thickness=0.5, z_base=None, cap_area=0.3, row_l
     Vtmp = np.vstack([V, np.array(new_xyz)])
     ring = Vtmp[bot_idx][:, :2]
     if not _polygon_is_simple(ring):
-        return None
+        raise ValueError('base outline crosses itself')
     m = len(ring)
     cap_out = tr.triangulate(dict(vertices=ring, segments=np.column_stack([np.arange(m), (np.arange(m) + 1) % m])), f'pq28a{cap_area}Y')
     cv = cap_out['vertices']; ct = cap_out['triangles']
@@ -535,9 +586,9 @@ def build_base_graded(V, F, base_thickness=0.5, z_base=None, cap_area=0.3, row_l
     cap = np.where((area2 > 0)[:, None], cap[:, ::-1], cap)       # normal pointing down
     Fall = np.vstack([F, wall, cap])
     if not _is_closed_manifold(Fall):
-        return None
+        raise ValueError('result is not a closed surface')
     info = dict(z_base=z_base, loop_len=n, wall_faces=len(wall), cap_faces=len(cap), patch_faces=len(F),
-                cap_area=float(np.abs(area2).sum() / 2), wall_rows=K)
+                cap_area=float(np.abs(area2).sum() / 2), wall_rows=K, wall_lean_mm=round(leaning, 2))
     return Vall, Fall, info
 
 
