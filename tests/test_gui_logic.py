@@ -49,6 +49,12 @@ class T(unittest.TestCase):
         p = jobs.build_args(jobs.Job('pair', ['/u', '/l'], ['/uo', '/lo']), o, 'make_base.py', python='py')
         self.assertIn('--pair-out', p)
 
+    def test_strip_option(self):
+        j = jobs.Job('single', ['/a/u.stl'], ['/a/u_output.stl'])
+        self.assertNotIn('--strip', jobs.build_args(j, jobs.Options(), 'make_base.py', python='py'))
+        a = jobs.build_args(j, jobs.Options(strip=1.5), 'make_base.py', python='py')
+        self.assertEqual(a[a.index('--strip') + 1], '1.5')
+
     def test_report(self):
         self.assertIsNone(jobs.parse_report('[ 1.0s] loaded'))
         r = jobs.parse_report('{"watertight": true, "euler": 2, "crown_exact_pct": 100.0}')

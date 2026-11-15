@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 
 from .stl_io import output_path
 
-DEFAULTS = dict(offset=4.5, smooth=6.0, loop_sigma=1.5, thickness=0.5)
+DEFAULTS = dict(offset=4.5, smooth=6.0, loop_sigma=1.5, thickness=0.5, strip=0.0)   # strip 0 = automatic
 
 
 @dataclass
@@ -18,6 +18,7 @@ class Options:
     smooth: float = DEFAULTS['smooth']          # trim field smoothing
     loop_sigma: float = DEFAULTS['loop_sigma']  # trimline smoothing (mm)
     thickness: float = DEFAULTS['thickness']    # base thickness (mm)
+    strip: float = DEFAULTS['strip']            # blend width along the cut edge (mm); 0 = automatic
 
 
 @dataclass
@@ -54,6 +55,8 @@ def build_args(job, opts, script, python=None):
     py = python or sys.executable
     common = ['--offset', f'{opts.offset:g}', '--smooth', f'{opts.smooth:g}',
               '--loop-sigma', f'{opts.loop_sigma:g}', '--thickness', f'{opts.thickness:g}']
+    if opts.strip > 0:
+        common += ['--strip', f'{opts.strip:g}']
     if job.kind == 'pair':
         return [py, '-u', script, '--pair', job.inputs[0], job.inputs[1], '--pair-out', job.outputs[0], job.outputs[1]] + common
     return [py, '-u', script, job.inputs[0], job.outputs[0]] + common

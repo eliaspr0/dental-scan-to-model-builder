@@ -203,6 +203,20 @@ class MainWindow(QMainWindow):
         v2.addWidget(self.chk_pair)
         ph = QLabel('Makes the two bases parallel so the models sit flat and still bite together.'); ph.setObjectName('help'); ph.setWordWrap(True)
         v2.addWidget(ph)
+        # advanced (collapsed by default): blend width
+        self.btn_adv = QPushButton('Advanced ▸'); self.btn_adv.setObjectName('link'); self.btn_adv.setCursor(Qt.PointingHandCursor)
+        self.btn_adv.setCheckable(True); self.btn_adv.toggled.connect(self._toggle_advanced)
+        v2.addWidget(self.btn_adv, 0, Qt.AlignLeft)
+        self.adv_box = QWidget(); av = QVBoxLayout(self.adv_box); av.setContentsMargins(0, 0, 0, 0); av.setSpacing(6)
+        self.sp_strip = self._spin(0.0, 5.0, 0.5, J.DEFAULTS['strip'], ' mm', 1,
+                                   'Width of the strip along the cut edge where the scan follows the smoothed trimline. Auto = 1 mm, narrower where the line barely moves.')
+        self.sp_strip.setSpecialValueText('Auto')
+        self._setting(av, 'Blend width', self.sp_strip,
+                      'How wide the strip along the cut edge is where the scan is blended into the smoothed trimline. '
+                      'Auto uses about 1 mm, narrower where the line barely moves and wider only if needed. '
+                      'Smaller touches less gum but can squeeze triangles; larger gives a softer blend. Typical: 0.5–3 mm.')
+        self.adv_box.setVisible(False)
+        v2.addWidget(self.adv_box)
         self.btn_reset = QPushButton('Reset to defaults'); self.btn_reset.setObjectName('link'); self.btn_reset.setCursor(Qt.PointingHandCursor)
         self.btn_reset.clicked.connect(self._reset_defaults)
         v2.addWidget(self.btn_reset, 0, Qt.AlignLeft)
@@ -242,11 +256,15 @@ class MainWindow(QMainWindow):
         s.setSuffix(suffix); s.setToolTip(tip); s.setAlignment(Qt.AlignRight); s.setButtonSymbols(QDoubleSpinBox.PlusMinus); return s
 
     def options(self):
-        return J.Options(self.sp_offset.value(), self.sp_smooth.value(), self.sp_sigma.value(), self.sp_thick.value())
+        return J.Options(self.sp_offset.value(), self.sp_smooth.value(), self.sp_sigma.value(), self.sp_thick.value(), self.sp_strip.value())
 
     def _reset_defaults(self):
         self.sp_offset.setValue(J.DEFAULTS['offset']); self.sp_smooth.setValue(J.DEFAULTS['smooth'])
         self.sp_sigma.setValue(J.DEFAULTS['loop_sigma']); self.sp_thick.setValue(J.DEFAULTS['thickness'])
+        self.sp_strip.setValue(J.DEFAULTS['strip'])
+
+    def _toggle_advanced(self, on):
+        self.adv_box.setVisible(on); self.btn_adv.setText('Advanced ▾' if on else 'Advanced ▸')
 
     # ------------------------------------------------------------------ files
     def _notify(self, title, text, warn=True):
@@ -333,7 +351,7 @@ class MainWindow(QMainWindow):
     def _set_running(self, running):
         self._running = running
         for w in (self.btn_add, self.btn_remove, self.btn_clear, self.btn_reset, self.sp_offset, self.sp_smooth,
-                  self.sp_sigma, self.sp_thick, self.table.horizontalHeader()):
+                  self.sp_sigma, self.sp_thick, self.sp_strip, self.btn_adv, self.table.horizontalHeader()):
             w.setEnabled(not running)
         self.table.setAcceptDrops(not running)
         for r in range(self.table.rowCount()):

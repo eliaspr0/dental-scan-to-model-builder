@@ -364,10 +364,24 @@ def smooth_trim_loop(V, F, sigma=1.5, falloff=5.0, h=0.1, protect=None, xy_only=
     return D, np.linalg.norm(delta, axis=1).max()
 
 
-def fade_trimline(V, F, sigma, strip, protect=None, zmove=True, h=0.1):
+def adaptive_strip_widths(shift, loop_len_step, strip, ratio=2.0, ref=0.25, floor=0.1, smooth_mm=1.5):
+    """Per-loop-vertex fade width (mm). Where the smoothed trimline barely differs from the cut edge nothing needs to move,
+    so the strip shrinks toward zero; where the edge shifts by `s` the strip is at least `ratio * s` wide (keeps the
+    slope, and so the triangle squeeze, bounded) and at least `strip` once the shift reaches `ref` mm. The result is
+    smoothed along the loop so the width varies gently."""
+    from scipy.ndimage import gaussian_filter1d
+    sm = gaussian_filter1d(shift, max(smooth_mm / max(loop_len_step, 1e-6), 1.0), mode='wrap')
+    s = np.maximum(shift, sm)
+    w = np.maximum(ratio * s, strip * np.minimum(1.0, s / ref))
+    return np.maximum(w, floor)
+
+
+def fade_trimline(V, F, sigma, strip, protect=None, zmove=True, h=0.1, adaptive=True):
     """Smooth the trim loop in 3D (outline AND height, Gaussian along arc length, `sigma` mm) and spread the resulting
-    shift into the scan with a biharmonic fade that reaches exactly zero (with zero slope) `strip` mm from the edge, so
-    it joins the untouched surface without a crease. Crowns (`protect`) are pinned. Returns (displacement D, max edge shift)."""
+    shift into the scan with a biharmonic fade that reaches exactly zero (with zero slope) at the strip's border, so
+    it joins the untouched surface without a crease. The strip is `strip` mm wide where the edge shifts noticeably
+    (never narrower than 2x the local shift) and narrows toward zero where it barely moves (`adaptive`).
+    Crowns (`protect`) are pinned. Returns (displacement D, max edge shift)."""
     L, Ls = smoothed_loop_positions(V, F, sigma, h)
     if sigma <= 0:
         return np.zeros_like(V), 0.0
@@ -376,8 +390,13 @@ def fade_trimline(V, F, sigma, strip, protect=None, zmove=True, h=0.1):
     if not zmove:
         delta[:, 2] = 0.0
     n = len(V)
-    d, _ = cKDTree(P).query(V)
-    fixed = np.zeros(n, bool); fixed[L] = True; fixed |= d > strip
+    d, nn = cKDTree(P).query(V)
+    if adaptive:
+        step = float(np.linalg.norm(np.roll(P, -1, 0) - P, axis=1).mean())
+        w = adaptive_strip_widths(np.linalg.norm(delta, axis=1), step, strip)
+        fixed = np.zeros(n, bool); fixed[L] = True; fixed |= d > w[nn]
+    else:
+        fixed = np.zeros(n, bool); fixed[L] = True; fixed |= d > strip
     if protect is not None:
         fixed |= protect
         delta[protect[L]] = 0.0
