@@ -21,7 +21,7 @@ def main():
     ap.add_argument('--loop-sigma', type=float, default=1.5, help='smoothing of the base outline below the trimline, in mm (default 1.5); the scan surface is never modified in the default --trim-mode base')
     ap.add_argument('--thickness', type=float, default=0.5, help='base thickness below the lowest scan point in mm (default 0.5)')
     ap.add_argument('--trim-mode', choices=['base', 'deform'], default='base', help="base (default): scan surface untouched, only the base outline is smoothed; deform: legacy, also blends the smoothing into the surface within ~5 mm of the trimline")
-    ap.add_argument('--strip', type=float, default=None, help='advanced: width in mm of the strip along the cut edge where the scan follows the smoothed trimline (default: automatic, from 0.5 mm)')
+    ap.add_argument('--strip', type=float, default=None, help='advanced: width in mm of the strip along the cut edge where the scan follows the smoothed trimline (default: automatic, from 2 mm)')
     ap.add_argument('--preview', action='store_true', help='also write a PNG render next to each output')
     ap.add_argument('--pair', nargs=2, metavar=('UPPER', 'LOWER'), help='articulated pair: both bases parallel to the shared bite plane; outputs stay in the scans\' original (bite-registered) coordinates')
     ap.add_argument('--pair-out', nargs=2, metavar=('UPPER_OUT', 'LOWER_OUT'), help='with --pair: explicit output paths (instead of --outdir); needs a single --offset')

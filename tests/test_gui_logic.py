@@ -56,6 +56,11 @@ class T(unittest.TestCase):
         self.assertIn('teeth exact 100', jobs.summarize(r))
         self.assertIn('tunnels', jobs.summarize({'watertight': True, 'euler': -2}))
 
+    def test_stage(self):
+        self.assertEqual(jobs.parse_stage('@@STAGE 3/7 Finding the teeth'), (3, 7, 'Finding the teeth'))
+        self.assertIsNone(jobs.parse_stage('[ 1.0s] loaded'))
+        self.assertIsNone(jobs.parse_stage('@@STAGE x/y nope'))
+
 
 if __name__ == '__main__':
     unittest.main()

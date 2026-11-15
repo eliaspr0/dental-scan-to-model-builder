@@ -70,6 +70,19 @@ def parse_report(line):
         return None
 
 
+def parse_stage(line):
+    """Parse the progress marker printed by the backend: '@@STAGE 3/7 Finding the teeth' -> (3, 7, 'Finding the teeth')."""
+    line = line.strip()
+    if not line.startswith('@@STAGE '):
+        return None
+    try:
+        frac, _, label = line[len('@@STAGE '):].partition(' ')
+        i, n = frac.split('/')
+        return int(i), int(n), label.strip()
+    except ValueError:
+        return None
+
+
 def summarize(rep):
     """One-line human summary of a backend report."""
     solid = 'watertight' if rep.get('watertight') else 'NOT watertight'

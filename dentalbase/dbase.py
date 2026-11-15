@@ -364,6 +364,34 @@ def smooth_trim_loop(V, F, sigma=1.5, falloff=5.0, h=0.1, protect=None, xy_only=
     return D, np.linalg.norm(delta, axis=1).max()
 
 
+def fade_trimline(V, F, sigma, strip, protect=None, zmove=True, h=0.1):
+    """Smooth the trim loop in 3D (outline AND height, Gaussian along arc length, `sigma` mm) and spread the resulting
+    shift into the scan with a biharmonic fade that reaches exactly zero (with zero slope) `strip` mm from the edge, so
+    it joins the untouched surface without a crease. Crowns (`protect`) are pinned. Returns (displacement D, max edge shift)."""
+    L, Ls = smoothed_loop_positions(V, F, sigma, h)
+    if sigma <= 0:
+        return np.zeros_like(V), 0.0
+    P = V[L]
+    delta = Ls - P
+    if not zmove:
+        delta[:, 2] = 0.0
+    n = len(V)
+    d, _ = cKDTree(P).query(V)
+    fixed = np.zeros(n, bool); fixed[L] = True; fixed |= d > strip
+    if protect is not None:
+        fixed |= protect
+        delta[protect[L]] = 0.0
+    val = np.zeros((n, 3)); val[L] = delta
+    b = np.where(fixed)[0]
+    D = np.zeros((n, 3))
+    D[:] = igl.harmonic(np.ascontiguousarray(V, dtype=np.float64), np.ascontiguousarray(F, dtype=np.int64),
+                        b.astype(np.int64), np.ascontiguousarray(val[b]), 2)
+    D[L] = delta
+    if protect is not None:
+        D[protect] = 0.0
+    return D, float(np.linalg.norm(delta, axis=1).max())
+
+
 def flipped_faces(V0, V1, F):
     def fn(V):
         n = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
