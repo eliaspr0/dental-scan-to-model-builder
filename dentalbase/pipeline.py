@@ -238,6 +238,16 @@ def make_pair(upper_in, lower_in, upper_out, lower_out, **kw):
     n /= np.linalg.norm(n)
     ang = float(np.degrees(np.arccos(np.clip(up_l @ -up_u, -1, 1))))
     print(f'shared occlusal normal {np.round(n, 3).tolist()} (upper/lower estimates differ by {ang:.1f} deg)')
+    if ang > 30:
+        # not bite-registered in one frame (e.g. each jaw exported in its own coordinates): a shared plane would be
+        # meaningless and gives tilted, oversized bases. Process each jaw on its own plane instead.
+        print(f'  WARNING: these two scans are not aligned to each other (their bite planes differ by {ang:.0f} deg), '
+              'so they are processed separately, each with its own base plane.')
+        ru = make_base(upper_in, upper_out, **kw)
+        rl = make_base(lower_in, lower_out, **kw)
+        ru['pair_fallback'] = rl['pair_fallback'] = True
+        ru['arch_plane_disagreement_deg'] = rl['arch_plane_disagreement_deg'] = round(ang, 2)
+        return ru, rl
     if ang > 15:
         print('  WARNING: the two arches disagree on the occlusal plane by >15 deg; are the scans bite-registered in one frame?')
     ru = make_base(upper_in, upper_out, up=-n, **kw)
