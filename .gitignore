@@ -1,4 +1,8 @@
-*.stl
+__pycache__/
+*.pyc
+.venv/
+venv/
+build/
+dist/
+*.spec.bak
 .DS_Store
-*__pycache__*
-.venv

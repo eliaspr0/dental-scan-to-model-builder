@@ -110,3 +110,25 @@ gui.py, dentalbase_gui/  desktop GUI (PySide6), talks to the backend only throug
 tests/                   GUI logic tests
 ```
 Use from Python: `from dentalbase.pipeline import make_base; make_base('in.stl', 'out.stl', offset=4.0)`
+
+
+## Packaged app (double-click, no Python needed)
+
+Build it automatically on GitHub: **Actions > Build apps > Run workflow** (or push a tag such as `v1.0.0` to also
+attach the zips to a Release). Download the zip for your system from the run's *Artifacts* (or the Release):
+
+| File | For |
+|---|---|
+| `DentalBaseModel-macOS-AppleSilicon.zip` | Macs with M1/M2/M3/M4 |
+| `DentalBaseModel-macOS-Intel.zip` | older Intel Macs |
+| `DentalBaseModel-Windows.zip` | Windows 10/11 (unzip, run `DentalBaseModel.exe`) |
+
+The app is large (roughly 400-700 MB unzipped) because it bundles Python and all libraries.
+
+**First launch, because the app is not code-signed:**
+- macOS: right-click the app > **Open** > **Open** (once). If macOS still refuses: System Settings > Privacy & Security > *Open Anyway*.
+  Removing the warning completely needs an Apple Developer account (signing + notarization).
+- Windows: SmartScreen shows "Windows protected your PC": **More info > Run anyway**.
+
+Build locally instead: `pip install -r requirements-gui.txt pyinstaller && python packaging/make_icon.py && pyinstaller packaging/dentalbase.spec --noconfirm`
+(result in `dist/`). The packaged app runs the backend by launching itself with `--run-backend`; `--selftest` checks the install.

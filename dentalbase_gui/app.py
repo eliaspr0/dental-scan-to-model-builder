@@ -416,7 +416,7 @@ class MainWindow(QMainWindow):
         self._proc = QProcess(self)
         self._proc.setProcessChannelMode(QProcess.MergedChannels)
         env = QProcessEnvironment.systemEnvironment(); env.insert('PYTHONUNBUFFERED', '1'); self._proc.setProcessEnvironment(env)
-        self._proc.setWorkingDirectory(str(BACKEND_SCRIPT.parent))
+        self._proc.setWorkingDirectory(str(BACKEND_SCRIPT.parent) if not getattr(sys, 'frozen', False) else os.path.expanduser('~'))
         self._proc.readyReadStandardOutput.connect(self._on_output)
         self._proc.finished.connect(self._on_finished)
         self._proc.errorOccurred.connect(self._on_error)

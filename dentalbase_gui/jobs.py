@@ -53,13 +53,15 @@ def plan_jobs(files, pair):
 def build_args(job, opts, script, python=None):
     """Command line (list) that runs one job through the backend CLI."""
     py = python or sys.executable
+    # packaged app: there is no separate Python, so the app re-runs itself in backend mode (see gui.py)
+    head = [py, '--run-backend'] if getattr(sys, 'frozen', False) and python is None else [py, '-u', script]
     common = ['--offset', f'{opts.offset:g}', '--smooth', f'{opts.smooth:g}',
               '--loop-sigma', f'{opts.loop_sigma:g}', '--thickness', f'{opts.thickness:g}']
     if opts.strip > 0:
         common += ['--strip', f'{opts.strip:g}']
     if job.kind == 'pair':
-        return [py, '-u', script, '--pair', job.inputs[0], job.inputs[1], '--pair-out', job.outputs[0], job.outputs[1]] + common
-    return [py, '-u', script, job.inputs[0], job.outputs[0]] + common
+        return head + ['--pair', job.inputs[0], job.inputs[1], '--pair-out', job.outputs[0], job.outputs[1]] + common
+    return head + [job.inputs[0], job.outputs[0]] + common
 
 
 def parse_report(line):
