@@ -320,7 +320,7 @@ def main_loop(F):
     return max(loops, key=len), loops
 
 
-def smooth_trim_loop(V, F, sigma=1.5, falloff=5.0, h=0.1, protect=None):
+def smooth_trim_loop(V, F, sigma=1.5, falloff=5.0, h=0.1, protect=None, xy_only=False):
     """Gaussian-smooth the trim loop along arc length (mm); extend the loop displacement into the surface as a
     harmonic field that is zero farther than `falloff` mm from the loop (damps jitter, avoids fold-overs).
     Returns the per-vertex displacement field D and the max loop displacement (mm)."""
@@ -339,6 +339,8 @@ def smooth_trim_loop(V, F, sigma=1.5, falloff=5.0, h=0.1, protect=None):
     Usc = np.vstack([Us, Us[:1]]); suc = np.concatenate([su, [total]])
     Ls = np.column_stack([np.interp(s[:-1], suc, Usc[:, k]) for k in range(3)])
     delta = Ls - P
+    if xy_only:                                   # keep every vertex at its own height: wall stays exactly vertical
+        delta[:, 2] = 0.0
     n = len(V)
     dist, _ = cKDTree(P).query(V)
     fixed = np.zeros(n, bool); fixed[L] = True; fixed |= dist > falloff

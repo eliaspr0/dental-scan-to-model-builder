@@ -129,7 +129,7 @@ def check_tooth_preservation(V0, mask, out_path, extra_mask=None):
 
 
 def make_base(path_in, path_out, offset=4.5, smooth_t=6.0, loop_sigma=1.5, base_thickness=0.5,
-              border_keepout=2.5, protect_mm=None, up=None, trim_mode='base', edge_sigma=0.75, edge_band=1.0, verbose=True, return_all=False):
+              border_keepout=2.5, protect_mm=None, up=None, trim_mode='base', strip=None, strip_min=0.5, verbose=True, return_all=False):
     """up: optional occlusal normal (gingiva->crowns) in the scan's own coordinates, e.g. a shared bite-plane normal
     for an upper/lower pair. protect_mm: crowns + this ring are guaranteed untouched (default min(1, offset/2));
     pass a negative value to disable (for A/B testing only)."""
@@ -156,22 +156,34 @@ def make_base(path_in, path_out, offset=4.5, smooth_t=6.0, loop_sigma=1.5, base_
     V2, F2, oid = dbase.cut_mesh(V, F, g)
     V2, F2, oid = keep_largest_component(V2, F2, oid)
     log(t0, f'trim cut: {len(F2)} faces, {len(dbase.boundary_loops(F2))} boundary loop(s)')
-    prot_full = (d_tooth <= protect_mm) if protect_mm >= 0 else np.zeros(len(V), bool)
+    prot_full = ((d_tooth <= protect_mm) | mask) if protect_mm >= 0 else np.zeros(len(V), bool)   # crowns always pinned (even isolated islands)
     bottom_path = None
     if trim_mode == 'base':
-        # Surface-preserving mode (default). (1) Edge de-jitter: the raw isoline zig-zags at triangle scale (~0.05-0.25 mm),
-        # which shows up as ripples on the wall. Only the cut edge is relaxed (small sigma), and its shift fades out within
-        # `edge_band` mm of the edge, so the gingiva/teeth farther than that stay bit-exact. (2) The base outline is
-        # smoothed with the user's trimline smoothing; the wall is lofted between the two.
+        # Smooth wall (default). The trimline is smoothed (sigma = loop_sigma) in plan view and the vertical wall is
+        # extruded straight down from it, so the wall is exactly as smooth as the user asks. The scan surface follows
+        # the edge only inside a fade strip along the cut: the displacement decays to zero across `strip` mm, which is
+        # chosen as the narrowest width (from `strip_min`, default 0.5 mm) that does not fold triangles; pass `strip` to force one. Farther away: bit-exact.
         prot_cut = np.zeros(len(V2), bool); ok = oid >= 0; prot_cut[ok] = prot_full[oid[ok]]
-        D, maxd = dbase.smooth_trim_loop(V2, F2, sigma=edge_sigma, falloff=edge_band, protect=prot_cut if protect_mm >= 0 else None)
-        V3, alpha, it = dbase.safe_displace(V2, F2, D)
+        prot_arg = prot_cut if protect_mm >= 0 else None
+        _, Ls_ = dbase.smoothed_loop_positions(V2, F2, loop_sigma)
+        shift = float(np.linalg.norm((Ls_ - V2[dbase.main_loop(F2)[0]])[:, :2], axis=1).max())
+        strip = strip_min if strip is None else strip
+        best = None                                       # (backed-off vertices, strip, V3, alpha, D, maxd)
+        for strip_try in sorted({strip, strip * 2, strip * 4, 2.5 * shift, 4 * shift}):
+            if strip_try < strip: continue
+            D, maxd = dbase.smooth_trim_loop(V2, F2, sigma=loop_sigma, falloff=strip_try, protect=prot_arg, xy_only=True)
+            V3, alpha, it = dbase.safe_displace(V2, F2, D)
+            nb_ = int((alpha < 1).sum())
+            if best is None or nb_ < 0.9 * best[0]:       # a wider strip must clearly reduce the triangle back-offs
+                best = (nb_, strip_try, V3, alpha, D, maxd)
+            if nb_ == 0 or (best[1] != strip_try):
+                break
+        nb_, strip_used, V3, alpha, D, maxd = best
         D = V3 - V2
-        L, Ls = dbase.smoothed_loop_positions(V3, F2, loop_sigma)
-        bottom_path = resample_closed_xy(Ls[:, :2], 0.25)
+        bottom_path = resample_closed_xy(V3[dbase.main_loop(F2)[0]][:, :2], 0.3)   # evenly spaced, same curve: clean cap, vertical wall
         moved = int((np.abs(D).sum(1) > 0).sum())
-        log(t0, f'trim edge de-jittered (max shift {float(np.abs(D).max()):.2f} mm, {moved} vertices within {edge_band:g} mm of the edge); '
-                f'base outline smoothed (sigma {loop_sigma:g} mm); rest of the scan untouched')
+        log(t0, f'trimline smoothed (sigma {loop_sigma:g} mm, max edge shift {maxd:.2f} mm); fade strip {strip_used:g} mm '
+                f'({moved} vertices moved, {int((alpha < 1).sum())} backed off); surface beyond the strip untouched')
     else:                                                               # legacy 'deform' mode: also blends the shift into the surface
         prot_cut = np.zeros(len(V2), bool); ok = oid >= 0; prot_cut[ok] = prot_full[oid[ok]]
         D, maxd = dbase.smooth_trim_loop(V2, F2, sigma=loop_sigma, protect=prot_cut if protect_mm >= 0 else None)

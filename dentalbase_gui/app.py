@@ -131,7 +131,7 @@ class MainWindow(QMainWindow):
         self.sp_smooth = self._spin(0.0, 30.0, 1.0, J.DEFAULTS['smooth'], '', 1, '')   # advanced; not shown (CLI --smooth)
         self.sp_smooth.setVisible(False)
         self.sp_sigma = self._spin(0.0, 10.0, 0.5, J.DEFAULTS['loop_sigma'], ' mm', 1,
-                                   'Smooths the trimline and the wall below it so the extruded wall is smooth. Only a ~1 mm strip along the cut edge is touched; the gingiva and teeth above it are not modified.')
+                                   'Smooths the trimline; the wall is extruded straight down from the smoothed line. The scan follows it only within a narrow strip (about 0.5-2 mm) along the cut edge; everything above that strip, gingiva and teeth, is not modified. 0 = no smoothing.')
         self.sp_thick = self._spin(0.5, 20.0, 0.5, J.DEFAULTS['thickness'], ' mm', 1,
                                    'Base thickness below the lowest point of the scan; the base bottom is flat.')
         form.addRow('Gingiva margin height', self.sp_offset)

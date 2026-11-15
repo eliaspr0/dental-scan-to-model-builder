@@ -21,6 +21,7 @@ def main():
     ap.add_argument('--loop-sigma', type=float, default=1.5, help='smoothing of the base outline below the trimline, in mm (default 1.5); the scan surface is never modified in the default --trim-mode base')
     ap.add_argument('--thickness', type=float, default=0.5, help='base thickness below the lowest scan point in mm (default 0.5)')
     ap.add_argument('--trim-mode', choices=['base', 'deform'], default='base', help="base (default): scan surface untouched, only the base outline is smoothed; deform: legacy, also blends the smoothing into the surface within ~5 mm of the trimline")
+    ap.add_argument('--strip', type=float, default=None, help='advanced: width in mm of the strip along the cut edge where the scan follows the smoothed trimline (default: automatic, from 0.5 mm)')
     ap.add_argument('--preview', action='store_true', help='also write a PNG render next to each output')
     ap.add_argument('--pair', nargs=2, metavar=('UPPER', 'LOWER'), help='articulated pair: both bases parallel to the shared bite plane; outputs stay in the scans\' original (bite-registered) coordinates')
     ap.add_argument('--pair-out', nargs=2, metavar=('UPPER_OUT', 'LOWER_OUT'), help='with --pair: explicit output paths (instead of --outdir); needs a single --offset')
@@ -41,7 +42,7 @@ def main():
                 uo = os.path.join(a.outdir, f"{os.path.splitext(os.path.basename(up))[0]}_base_o{off:g}.stl")
                 lo_o = os.path.join(a.outdir, f"{os.path.splitext(os.path.basename(lo))[0]}_base_o{off:g}.stl")
             print(f'\n=== pair (offset {off:g} mm): {up} + {lo}')
-            reps = make_pair(up, lo, uo, lo_o, offset=off, smooth_t=a.smooth, loop_sigma=a.loop_sigma, base_thickness=a.thickness, trim_mode=a.trim_mode)
+            reps = make_pair(up, lo, uo, lo_o, offset=off, smooth_t=a.smooth, loop_sigma=a.loop_sigma, base_thickness=a.thickness, trim_mode=a.trim_mode, strip=a.strip)
             for r, dst in zip(reps, (uo, lo_o)):
                 print(os.path.basename(dst), json.dumps({k: r[k] for k in ('watertight', 'euler', 'crown_exact_pct', 'crown_max_dev_mm', 'crown_area_kept_pct')}))
                 if not r['watertight'] or r['euler'] != 2:

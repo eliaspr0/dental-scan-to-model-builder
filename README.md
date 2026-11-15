@@ -11,8 +11,8 @@ Pure geometry processing, **no machine learning, no GPU, no model weights**.
   never smoothed, moved, remeshed or cut away. The report prints `crown_exact_pct` (should be 100.0) and
   `crown_max_dev_mm` (should be 0.0), measured by reloading the exported STL and comparing with the input.
   (v0.1 did NOT guarantee this: its loop smoothing displaced 19-60% of crown vertices by up to ~0.6 mm.)
-- The scan surface is cut at the trimline and nothing else is changed except a ~1 mm strip along that cut edge (tiny
-  de-jitter, max ~0.3 mm shift, fading to zero); everything farther from the edge is bit-exact. Plus the added wall and base.
+- The scan surface is cut at the trimline and nothing else is changed except a narrow strip along that cut edge (0.5-2 mm wide,
+  edge shift ~0.4 mm at the default smoothing, fading to zero); everything farther from the edge is bit-exact. Plus the added wall and base.
 
 ## What it does
 1. Cleans the scan (merge duplicate vertices, drop tiny fragments).
@@ -57,9 +57,10 @@ Typical run: ~15-20 s per scan (200-270k triangles) on a 2-core CPU, a few GB RA
 |---|---|---|
 | `--offset` | 4.5 | gingiva margin height in mm: geodesic distance from the crowns to the trimline (several values allowed) |
 | `--smooth` | 6.0 | advanced: smoothing of the trim field before the cut. Barely changes the wall; not shown in the GUI |
-| `--loop-sigma` | 1.5 | trimline smoothing in mm: shapes the wall/base outline. The cut edge itself is also de-jittered (sigma 0.75 mm, fading out within 1 mm of the edge) so the wall has no ripples |
+| `--loop-sigma` | 1.5 | trimline smoothing in mm. The trimline is smoothed in plan view and the vertical wall is extruded straight down from it. The scan follows it only inside a narrow fade strip along the cut edge |
+| `--strip` | auto | advanced: width of that fade strip in mm (automatic: the narrowest from 0.5 mm that does not fold triangles; grows with the smoothing) |
 | `--thickness` | 0.5 | base thickness below the lowest scan point in mm |
-| `--trim-mode` | base | `base`: only a ~1 mm strip along the cut edge is de-jittered, the rest of the scan is untouched (default). `deform`: legacy, also blends the smoothing into the surface within ~5 mm of the trimline |
+| `--trim-mode` | base | `base`: smooth vertical wall; scan altered only in the edge strip (default). `deform`: legacy, also blends the smoothing into the surface within ~5 mm of the trimline |
 | `--preview` | off | write a PNG render next to each output |
 
 Units are the STL's units; scans are assumed to be in **millimetres**.
