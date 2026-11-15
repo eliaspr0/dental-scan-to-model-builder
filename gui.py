@@ -7,7 +7,7 @@ import sys
 
 
 def _selftest():
-    import numpy, scipy, trimesh, igl, manifold3d, mapbox_earcut, networkx, potpourri3d, PySide6  # noqa: F401
+    import numpy, scipy, trimesh, igl, manifold3d, mapbox_earcut, networkx, potpourri3d, triangle, PySide6  # noqa: F401
     import dentalbase.pipeline  # noqa: F401
     print('selftest ok')
 

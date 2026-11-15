@@ -418,9 +418,142 @@ def flipped_faces(V0, V1, F):
     return int((np.einsum('ij,ij->i', fn(V0), fn(V1)) <= 0).sum())
 
 
-def build_base(V, F, base_thickness=3.0, z_base=None, bottom_path=None):
-    """Closed solid: scan patch + vertical wall below the trim loop + flat cap at z_base. Returns (V, F, info)."""
+def _polygon_is_simple(P):
+    """True if the closed polyline P (n,2) has no crossing segments (tests non-adjacent segment pairs, chunked)."""
+    n = len(P); A = P; B = np.roll(P, -1, 0)
+    def orient(a, b, c):
+        return (b[..., 0] - a[..., 0]) * (c[..., 1] - a[..., 1]) - (b[..., 1] - a[..., 1]) * (c[..., 0] - a[..., 0])
+    idx = np.arange(n)
+    for s0 in range(0, n, 400):
+        i = idx[s0:s0 + 400][:, None]; j = idx[None, :]
+        a1, b1 = A[i], B[i]; a2, b2 = A[j], B[j]
+        d1 = orient(a1, b1, a2); d2 = orient(a1, b1, b2); d3 = orient(a2, b2, a1); d4 = orient(a2, b2, b1)
+        cross = (d1 * d2 < 0) & (d3 * d4 < 0)
+        near = (np.abs(i - j) <= 1) | (np.abs(i - j) >= n - 1)
+        if (cross & ~near).any():
+            return False
+    return True
+
+
+def _is_closed_manifold(F):
+    e = np.sort(np.vstack([F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]]), axis=1)
+    _, c = np.unique(e, axis=0, return_counts=True)
+    return bool((c == 2).all())
+
+
+def build_base_graded(V, F, base_thickness=0.5, z_base=None, cap_area=0.3, row_lo=0.12, row_hi=0.7, grow=1.7, first=0.12):
+    """Closed solid with an evenly meshed wall and base. The vertical wall is meshed in its unrolled (arc length, height)
+    plane from rows that get coarser with depth, so triangles stay well shaped (no long slivers); the flat base is a
+    quality triangulation. Geometry is the same vertical wall + flat cap as `build_base`. Returns (V, F, info) or None."""
+    import triangle as tr
+    L, loops = main_loop(F)
+    if len(loops) != 1:
+        return None
+    nv = len(V); top = V[L]; n = len(L)
+    if z_base is None:
+        z_base = float(V[:, 2].min() - base_thickness)
+    xy = top[:, :2]
+    seg = np.linalg.norm(np.roll(xy, -1, 0) - xy, axis=1)
+    s_top = np.r_[0.0, np.cumsum(seg)]; P = s_top[-1]
+    s_top[1:] = np.maximum.accumulate(s_top[1:] + 1e-7 * np.arange(1, n + 1))   # strictly increasing
+    P = s_top[-1]
+    xs = np.r_[xy[:, 0], xy[0, 0]]; ys = np.r_[xy[:, 1], xy[0, 1]]; zs = np.r_[top[:, 2], top[0, 2]]
+    H = zs - z_base
+    if H.min() <= 1e-6:
+        return None
+    Href = float(np.percentile(H, 90))
+    d = [0.0]; step = first
+    while d[-1] < Href:
+        d.append(d[-1] + step); step = min(step * grow, 0.7)
+    u = np.array(d) / d[-1]; K = len(u) - 1                  # u[0]=0 (top) ... u[K]=1 (bottom)
+    Hfun = lambda s: np.interp(s, s_top_ext, H)
+    s_top_ext = np.r_[s_top[:-1], P]
+    pts2 = []                                                 # 2-D points (s, z)
+    seam_end = {}                                             # row -> 2-D index of the s=P point
+    nxt = nv; new_xyz = []
+    pt_row_start = []
+    vid = []                                                  # 3-D index of every 2-D point
+    for k in range(K + 1):
+        if k == 0:
+            ss = s_top[:-1].copy()
+        else:
+            ss = [0.0]
+            while True:
+                h = Hfun(ss[-1])
+                if k < K:
+                    sp = np.clip(1.3 * h * (u[k + 1] - u[k]), row_lo, row_hi)
+                else:
+                    sp = 0.5
+                if ss[-1] + sp >= P - 0.5 * sp:
+                    break
+                ss.append(ss[-1] + sp)
+            ss = np.array(ss)
+        start = len(pts2); pt_row_start.append(start)
+        for j, sv in enumerate(ss):
+            h = float(Hfun(sv)); z = float(np.interp(sv, s_top_ext, zs)) - h * u[k] if k else float(np.interp(sv, s_top_ext, zs))
+            pts2.append((sv, z))
+            if k == 0:
+                vid.append(L[j])
+            else:
+                x = float(np.interp(sv, s_top_ext, xs)); y = float(np.interp(sv, s_top_ext, ys))
+                zz = z if k < K else z_base
+                new_xyz.append((x, y, zz)); vid.append(nxt); nxt += 1
+        # closing point at s=P (same 3-D vertex as the row's first point)
+        pts2.append((P, pts2[start][1])); vid.append(vid[start]); seam_end[k] = len(pts2) - 1
+    pts2 = np.array(pts2); vid = np.array(vid)
+    segs = []
+    for k in (0, K):                                          # top and bottom boundaries
+        a = pt_row_start[k]; b = seam_end[k]
+        segs += [(i, i + 1) for i in range(a, b)]
+    for k in range(K):                                        # the two vertical seams
+        segs.append((pt_row_start[k], pt_row_start[k + 1])); segs.append((seam_end[k], seam_end[k + 1]))
+    out = tr.triangulate(dict(vertices=pts2, segments=np.array(segs)), 'p')
+    if len(out['vertices']) != len(pts2):
+        return None
+    T = out['triangles']
+    p0, p1, p2 = pts2[T[:, 0]], pts2[T[:, 1]], pts2[T[:, 2]]
+    a2 = (p1[:, 0] - p0[:, 0]) * (p2[:, 1] - p0[:, 1]) - (p2[:, 0] - p0[:, 0]) * (p1[:, 1] - p0[:, 1])
+    T = np.where((a2 < 0)[:, None], T[:, ::-1], T)           # counter-clockwise in (s, z) = outward normal
+    wall = vid[T]
+    wall = wall[(wall[:, 0] != wall[:, 1]) & (wall[:, 1] != wall[:, 2]) & (wall[:, 0] != wall[:, 2])]
+    # ---- base cap
+    bot_idx = vid[pt_row_start[K]:seam_end[K]]                # 3-D indices of the bottom outline
+    Vtmp = np.vstack([V, np.array(new_xyz)])
+    ring = Vtmp[bot_idx][:, :2]
+    if not _polygon_is_simple(ring):
+        return None
+    m = len(ring)
+    cap_out = tr.triangulate(dict(vertices=ring, segments=np.column_stack([np.arange(m), (np.arange(m) + 1) % m])), f'pq28a{cap_area}Y')
+    cv = cap_out['vertices']; ct = cap_out['triangles']
+    extra = cv[m:]
+    ex_idx = len(Vtmp) + np.arange(len(extra))
+    Vall = np.vstack([Vtmp, np.column_stack([extra, np.full(len(extra), z_base)])])
+    cmap = np.r_[bot_idx, ex_idx]
+    cap = cmap[ct]
+    q0, q1, q2 = cv[ct[:, 0]], cv[ct[:, 1]], cv[ct[:, 2]]
+    area2 = (q1[:, 0] - q0[:, 0]) * (q2[:, 1] - q0[:, 1]) - (q2[:, 0] - q0[:, 0]) * (q1[:, 1] - q0[:, 1])
+    cap = np.where((area2 > 0)[:, None], cap[:, ::-1], cap)       # normal pointing down
+    Fall = np.vstack([F, wall, cap])
+    if not _is_closed_manifold(Fall):
+        return None
+    info = dict(z_base=z_base, loop_len=n, wall_faces=len(wall), cap_faces=len(cap), patch_faces=len(F),
+                cap_area=float(np.abs(area2).sum() / 2), wall_rows=K)
+    return Vall, Fall, info
+
+
+def build_base(V, F, base_thickness=3.0, z_base=None, bottom_path=None, graded=True):
+    """Closed solid: scan patch + vertical wall below the trim loop + flat cap at z_base. Returns (V, F, info).
+    graded=True (default): evenly meshed wall and base (see build_base_graded); falls back to the simple stitched wall
+    + ear-clipped cap if that is not possible."""
     import mapbox_earcut as earcut
+    if graded:
+        try:
+            r = build_base_graded(V, F, base_thickness=base_thickness, z_base=z_base)
+        except Exception as e:
+            print(f'  (graded base mesh unavailable: {e}; using the simple base)')
+            r = None
+        if r is not None:
+            return r
     L, loops = main_loop(F)
     assert len(loops) == 1, f'expected 1 boundary loop, got {len(loops)}'
     top = V[L]

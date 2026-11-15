@@ -4,7 +4,7 @@ from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 ROOT = os.path.abspath(os.path.join(SPECPATH, '..'))
 datas, binaries, hidden = [], [], []
-for pkg in ('igl', 'potpourri3d', 'manifold3d', 'mapbox_earcut', 'trimesh', 'scipy', 'networkx'):
+for pkg in ('igl', 'potpourri3d', 'manifold3d', 'mapbox_earcut', 'triangle', 'trimesh', 'scipy', 'networkx'):
     try:
         d, b, h = collect_all(pkg)
         datas += d; binaries += b; hidden += h

@@ -8,3 +8,4 @@ matplotlib>=3.7
 pillow>=10.0
 networkx>=3.0
 potpourri3d>=1.0
+triangle>=20230923
