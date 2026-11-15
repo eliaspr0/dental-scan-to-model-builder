@@ -67,7 +67,7 @@ Units are the STL's units; scans are assumed to be in **millimetres**.
 
 ## Desktop GUI (drag & drop)
 ```bash
-pip install -r requirements-gui.txt     # PySide6; the backend requirements must be installed in the same environment
+pip install -r requirements-gui.txt     # installs the backend requirements and PySide6
 python gui.py
 ```
 The window walks through three steps: **1 Add your scans** (drop binary `.stl` files or *Choose files...*; the jaw is guessed
@@ -130,5 +130,5 @@ The app is large (roughly 400-700 MB unzipped) because it bundles Python and all
   Removing the warning completely needs an Apple Developer account (signing + notarization).
 - Windows: SmartScreen shows "Windows protected your PC": **More info > Run anyway**.
 
-Build locally instead: `pip install -r requirements-gui.txt pyinstaller && python packaging/make_icon.py && pyinstaller packaging/dentalbase.spec --noconfirm`
+Build locally instead: `python -m pip install -r requirements-gui.txt pyinstaller && python packaging/make_icon.py && python -m PyInstaller packaging/dentalbase.spec --noconfirm`
 (result in `dist/`). The packaged app runs the backend by launching itself with `--run-backend`; `--selftest` checks the install.
