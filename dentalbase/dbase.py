@@ -310,6 +310,45 @@ def boundary_loops(F, V=None):
     return loops
 
 
+def fill_small_holes(V, F, max_len_mm=60.0):
+    """Close the holes inside a patch (every boundary loop except the longest = the trimline) with triangles that use only the
+    loop's own vertices: no vertex is added or moved, so the scan around a hole is untouched. A hole is a tiny gap in the raw
+    scan (or a pinhole left by the cut). Holes longer than max_len_mm are left alone. Returns (F_new, info)."""
+    import mapbox_earcut as earcut
+    loops = boundary_loops(F)
+    if len(loops) <= 1:
+        return F, dict(filled=0, skipped=0, largest_mm=0.0)
+    main = max(loops, key=len)
+    add = []; filled = 0; skipped = 0; largest = 0.0
+    for lp in loops:
+        if lp is main:
+            continue
+        P = V[lp]; n = len(lp)
+        length = float(np.linalg.norm(P - np.roll(P, -1, 0), axis=1).sum())
+        if n < 3 or length > max_len_mm:
+            skipped += 1; continue
+        c = P.mean(0); _, _, vt = np.linalg.svd(P - c, full_matrices=False)
+        a, b = vt[0], vt[1]
+        rev = lp[::-1]                                   # new faces run opposite to the boundary half-edges
+        Q = np.c_[(V[rev] - c) @ a, (V[rev] - c) @ b]
+        area2 = float(np.sum(Q[:, 0] * np.roll(Q[:, 1], -1) - np.roll(Q[:, 0], -1) * Q[:, 1]))
+        if abs(area2) < 1e-12:
+            skipped += 1; continue
+        if area2 < 0:
+            Q = Q * np.array([1.0, -1.0])
+        T = np.asarray(earcut.triangulate_float64(np.ascontiguousarray(Q, dtype=np.float64), np.array([n], dtype=np.uint32))).reshape(-1, 3)
+        if len(T) != n - 2:
+            skipped += 1; continue
+        t0_, t1_, t2_ = Q[T[:, 0]], Q[T[:, 1]], Q[T[:, 2]]
+        sgn = (t1_[:, 0] - t0_[:, 0]) * (t2_[:, 1] - t0_[:, 1]) - (t2_[:, 0] - t0_[:, 0]) * (t1_[:, 1] - t0_[:, 1])
+        T = np.where((sgn < 0)[:, None], T[:, ::-1], T)
+        add.append(rev[T]); filled += 1; largest = max(largest, length)
+    if not add:
+        return F, dict(filled=0, skipped=skipped, largest_mm=0.0)
+    Fn = np.vstack([F] + add)
+    return Fn, dict(filled=filled, skipped=skipped, largest_mm=round(largest, 2))
+
+
 # ---------------------------------------------------------------- loop smoothing + base extrusion
 from scipy.ndimage import gaussian_filter1d
 from scipy.spatial import cKDTree
@@ -467,24 +506,67 @@ def simple_outline(xy, window_mm=3.0, sigma_mm=1.5, max_iter=6):
         if not hits:
             return xy
         seg = np.linalg.norm(np.roll(xy, -1, 0) - xy, axis=1); s = np.r_[0.0, np.cumsum(seg)]; Ptot = s[-1]
-        sig = sigma_mm * (2 ** it); out = xy.copy()
+        sig = sigma_mm * (2 ** it); win = window_mm * (2 ** it); out = xy.copy()   # stronger smoothing needs a wider window
         for i, j in hits:
             # window = the shorter arc between the crossing segments, padded by window_mm on both sides
             d = s[j] - s[i]
             a, b = (i, j) if d <= Ptot - d else (j, i + n)
             lo = a; hi = b + 1
-            while (s[a % n] - s[(lo - 1) % n]) % Ptot < window_mm and lo > a - n // 2: lo -= 1
-            while (s[(hi) % n] - s[b % n]) % Ptot < window_mm and hi < b + n // 2: hi += 1
+            while (s[a % n] - s[(lo - 1) % n]) % Ptot < win and lo > a - n // 2: lo -= 1
+            while (s[(hi) % n] - s[b % n]) % Ptot < win and hi < b + n // 2: hi += 1
             idx = np.arange(lo, hi + 1) % n
             t = np.cumsum(np.r_[0.0, np.linalg.norm(np.diff(xy[np.r_[idx, idx[-1]]][:len(idx)], axis=0), axis=1)])
             W = np.exp(-0.5 * ((t[:, None] - t[None, :]) / sig) ** 2); W /= W.sum(1, keepdims=True)
             sm = W @ xy[idx]
-            ramp = np.clip(np.minimum(t, t[-1] - t) / max(window_mm, 1e-9), 0, 1); ramp = 0.5 - 0.5 * np.cos(np.pi * ramp)
+            ramp = np.clip(np.minimum(t, t[-1] - t) / max(win, 1e-9), 0, 1); ramp = 0.5 - 0.5 * np.cos(np.pi * ramp)
             out[idx] = xy[idx] * (1 - ramp[:, None]) + sm * ramp[:, None]
         xy = out
     if _crossing_pairs(xy):
         raise ValueError('base outline crosses itself and could not be smoothed apart')
     return xy
+
+
+def _flip_chords_on_patch_edges(T, pts2, vid, F, max_pass=60):
+    """A wall triangle edge between two trimline vertices that are not neighbours on the trimline but are joined by an edge of the
+    scan patch (a thin neck) would be shared by four faces. Flip such edges in the wall triangulation (T indexes the (s, z)
+    points pts2; vid maps them to mesh vertices) so the wall never duplicates a patch edge."""
+    pe = np.vstack([F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]]); pe = np.sort(pe, axis=1)
+    patch_edges = set(map(tuple, pe.tolist()))
+    T = T.copy()
+    for _ in range(max_pass):
+        ed = {}
+        for t, (a, b, c) in enumerate(T.tolist()):
+            for u, v in ((a, b), (b, c), (c, a)):
+                ed.setdefault((min(u, v), max(u, v)), []).append(t)
+        bad = []
+        for (u, v), ts in ed.items():
+            if len(ts) == 2:
+                x, y = int(vid[u]), int(vid[v])
+                if x != y and (min(x, y), max(x, y)) in patch_edges:
+                    bad.append((u, v, ts))
+        if not bad:
+            break
+        flipped = 0; touched = set()
+        for u, v, ts in bad:
+            t1, t2 = ts
+            if t1 in touched or t2 in touched:
+                continue
+            tri1 = T[t1].tolist(); tri2 = T[t2].tolist()
+            c = [w for w in tri1 if w != u and w != v][0]; d = [w for w in tri2 if w != u and w != v][0]
+            i1 = tri1.index(u); a, b = (u, v) if tri1[(i1 + 1) % 3] == v else (v, u)   # a->b runs along T1
+            nt1 = (a, d, c); nt2 = (d, b, c)
+            def area2(t):
+                p0, p1, p2 = pts2[t[0]], pts2[t[1]], pts2[t[2]]
+                return (p1[0] - p0[0]) * (p2[1] - p0[1]) - (p2[0] - p0[0]) * (p1[1] - p0[1])
+            if area2(nt1) <= 1e-12 or area2(nt2) <= 1e-12:
+                continue
+            x, y = int(vid[c]), int(vid[d])
+            if (min(x, y), max(x, y)) in patch_edges or (min(c, d), max(c, d)) in ed:
+                continue
+            T[t1] = nt1; T[t2] = nt2; touched.update((t1, t2)); flipped += 1
+        if not flipped:
+            break
+    return T
 
 
 def build_base_graded(V, F, base_thickness=0.5, z_base=None, cap_area=0.3, row_lo=0.12, row_hi=0.7, grow=1.7, first=0.12):
@@ -565,6 +647,7 @@ def build_base_graded(V, F, base_thickness=0.5, z_base=None, cap_area=0.3, row_l
     p0, p1, p2 = pts2[T[:, 0]], pts2[T[:, 1]], pts2[T[:, 2]]
     a2 = (p1[:, 0] - p0[:, 0]) * (p2[:, 1] - p0[:, 1]) - (p2[:, 0] - p0[:, 0]) * (p1[:, 1] - p0[:, 1])
     T = np.where((a2 < 0)[:, None], T[:, ::-1], T)           # counter-clockwise in (s, z) = outward normal
+    T = _flip_chords_on_patch_edges(T, pts2, vid, F)
     wall = vid[T]
     wall = wall[(wall[:, 0] != wall[:, 1]) & (wall[:, 1] != wall[:, 2]) & (wall[:, 0] != wall[:, 2])]
     # ---- base cap

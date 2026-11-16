@@ -12,7 +12,18 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from dentalbase.pipeline import make_base, make_pair
 
 
+def _utf8_streams():
+    """File names may contain non-ASCII letters (e.g. Greek). On Windows a piped stdout defaults to a legacy codepage (cp1252)
+    that cannot print them, which used to crash the run; always write UTF-8 (the GUI reads it as UTF-8)."""
+    for st in (sys.stdout, sys.stderr):
+        try:
+            st.reconfigure(encoding='utf-8', errors='replace')
+        except Exception:
+            pass
+
+
 def main():
+    _utf8_streams()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('inputs', nargs='*', help='input STL (then output STL), or several input STLs with --outdir')
     ap.add_argument('--outdir', help='batch mode: write <name>_base_o<offset>.stl here')

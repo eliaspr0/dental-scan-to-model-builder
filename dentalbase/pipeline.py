@@ -169,6 +169,10 @@ def make_base(path_in, path_out, offset=4.5, smooth_t=6.0, loop_sigma=1.5, base_
     g, d_tooth, d_border, nbridge = bridged_trim_field(V, F, mask, bv, offset, border_keepout, smooth_t, t0=t0, protect_mm=pm)
     V2, F2, oid = dbase.cut_mesh(V, F, g)
     V2, F2, oid = keep_largest_component(V2, F2, oid)
+    F2, holes = dbase.fill_small_holes(V2, F2)
+    if holes['filled'] or holes['skipped']:
+        log(t0, f"closed {holes['filled']} small hole(s) in the scan surface (longest edge {holes['largest_mm']} mm); no vertices moved"
+                + (f", {holes['skipped']} too large to close" if holes['skipped'] else ''))
     log(t0, f'trim cut: {len(F2)} faces, {len(dbase.boundary_loops(F2))} boundary loop(s)')
     prot_full = ((d_tooth <= protect_mm) | mask) if protect_mm >= 0 else np.zeros(len(V), bool)   # crowns always pinned (even isolated islands)
     stage(5, verbose)

@@ -415,7 +415,7 @@ class MainWindow(QMainWindow):
         args = J.build_args(job, self.options(), str(BACKEND_SCRIPT))
         self._proc = QProcess(self)
         self._proc.setProcessChannelMode(QProcess.MergedChannels)
-        env = QProcessEnvironment.systemEnvironment(); env.insert('PYTHONUNBUFFERED', '1'); self._proc.setProcessEnvironment(env)
+        env = QProcessEnvironment.systemEnvironment(); env.insert('PYTHONUNBUFFERED', '1'); env.insert('PYTHONUTF8', '1'); env.insert('PYTHONIOENCODING', 'utf-8'); self._proc.setProcessEnvironment(env)
         self._proc.setWorkingDirectory(str(BACKEND_SCRIPT.parent) if not getattr(sys, 'frozen', False) else os.path.expanduser('~'))
         self._proc.readyReadStandardOutput.connect(self._on_output)
         self._proc.finished.connect(self._on_finished)
