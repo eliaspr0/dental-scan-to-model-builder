@@ -1,4 +1,4 @@
-# PyInstaller spec: pyinstaller packaging/dentalbase.spec --noconfirm
+# PyInstaller spec: pyinstaller packaging/DentalScanToModelBuilder.spec --noconfirm
 import sys, os
 from PyInstaller.utils.hooks import collect_all, collect_submodules
 
@@ -20,10 +20,10 @@ excludes = ['tkinter', 'PySide6.QtWebEngineCore', 'PySide6.QtWebEngineWidgets', 
 a = Analysis([os.path.join(ROOT, 'gui.py')], pathex=[ROOT], datas=datas, binaries=binaries, hiddenimports=hidden,
              excludes=excludes, noarchive=False)
 pyz = PYZ(a.pure)
-exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name='DentalBaseModel', console=False,
+exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name='DentalScanToModelBuilder', console=False,
           icon=icon if os.path.exists(icon) else None, upx=False)
-coll = COLLECT(exe, a.binaries, a.datas, name='DentalBaseModel', upx=False)
+coll = COLLECT(exe, a.binaries, a.datas, name='DentalScanToModelBuilder', upx=False)
 if sys.platform == 'darwin':
-    app = BUNDLE(coll, name='Dental Base Model.app', icon=icon if os.path.exists(icon) else None,
-                 bundle_identifier='org.dentalbase.model',
+    app = BUNDLE(coll, name='Dental Scan to Model Builder.app', icon=icon if os.path.exists(icon) else None,
+                 bundle_identifier='org.dentalscan.modelbuilder',
                  info_plist={'NSHighResolutionCapable': True, 'CFBundleShortVersionString': '1.0.0'})

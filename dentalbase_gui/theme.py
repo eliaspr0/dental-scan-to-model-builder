@@ -10,6 +10,10 @@ CARD = '#f5f5f7'
 GOOD = '#1d8a3a'
 BAD = '#d70015'
 
+# status indicator dots (table "Status" column)
+DOT = {'ready': '#c7c7cc', 'queued': '#c7c7cc', 'running': ACCENT, 'ok': '#34c759', 'warn': '#ffb800',
+       'bad': '#ff3b30', 'cancelled': '#8e8e93'}
+
 FONT_FAMILY = '-apple-system, "SF Pro Text", "Helvetica Neue", "Segoe UI", Arial, sans-serif'
 
 STYLE = f"""

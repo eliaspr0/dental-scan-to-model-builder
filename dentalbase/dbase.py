@@ -1,4 +1,4 @@
-"""Geometry-only dental base prototype: load/clean, orient, curvature, margin field."""
+"""Geometry-only core of Dental Scan to Model Builder: load/clean, orient, curvature, margin field, base build."""
 import numpy as np, trimesh, igl, scipy.sparse as sp
 from scipy.sparse.linalg import splu
 

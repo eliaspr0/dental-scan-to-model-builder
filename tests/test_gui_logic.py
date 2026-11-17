@@ -62,6 +62,14 @@ class T(unittest.TestCase):
         p = jobs.Job('pair', ['/u', '/l'], ['/uo', '/lo'])
         self.assertIn('--follow-tips', jobs.build_args(p, jobs.Options(follow_tips=True), 'make_base.py', python='py'))
 
+    def test_classify(self):
+        ok = dict(watertight=True, euler=2, crown_exact_pct=100.0)
+        self.assertEqual(jobs.classify(ok)[0], 'ok')
+        self.assertEqual(jobs.classify(dict(ok, watertight=False))[0], 'warn')
+        self.assertEqual(jobs.classify(dict(ok, euler=-4))[0], 'warn')
+        self.assertEqual(jobs.classify(dict(ok, crown_exact_pct=99.9))[0], 'warn')
+        self.assertEqual(jobs.classify(None)[0], 'ok')
+
     def test_report(self):
         self.assertIsNone(jobs.parse_report('[ 1.0s] loaded'))
         r = jobs.parse_report('{"watertight": true, "euler": 2, "crown_exact_pct": 100.0}')

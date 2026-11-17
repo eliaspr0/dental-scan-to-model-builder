@@ -1,4 +1,4 @@
-"""PySide6 desktop GUI for the dental base model generator.
+"""PySide6 desktop GUI for Dental Scan to Model Builder.
 
 Decoupling: this module never imports the backend (`dentalbase`). It runs `make_base.py` as a subprocess
 (QProcess), streams its output into the log and parses the JSON report lines it prints.
@@ -7,8 +7,8 @@ import os
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QRectF, QSettings, QTimer, Qt, QProcess, QProcessEnvironment, QUrl, Signal
-from PySide6.QtGui import QColor, QDesktopServices, QPainter, QPen
+from PySide6.QtCore import QRectF, QSize, QSettings, QTimer, Qt, QProcess, QProcessEnvironment, QUrl, Signal
+from PySide6.QtGui import QColor, QDesktopServices, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QCheckBox, QComboBox, QDoubleSpinBox, QFrame, QHBoxLayout, QHeaderView, QLabel,
     QMainWindow, QMessageBox, QPushButton, QScrollArea, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QFileDialog,
@@ -22,6 +22,18 @@ from .stl_io import check_binary_stl, guess_role, is_stl_name, output_path
 BACKEND_SCRIPT = Path(__file__).resolve().parent.parent / 'make_base.py'
 ROLES = [('single', 'Single arch'), ('upper', 'Upper jaw'), ('lower', 'Lower jaw')]
 COL_FILE, COL_ROLE, COL_OUT, COL_STATUS = range(4)
+_DOTS = {}
+
+
+def status_dot(level):
+    """Small filled circle for the Status column (cached): grey = waiting, blue = running, green = done,
+    yellow = done but worth a look, red = failed, dark grey = cancelled."""
+    if level not in _DOTS:
+        pm = QPixmap(48, 48); pm.fill(Qt.transparent)
+        p = QPainter(pm); p.setRenderHint(QPainter.Antialiasing)
+        p.setPen(Qt.NoPen); p.setBrush(QColor(theme.DOT[level])); p.drawEllipse(8, 8, 32, 32); p.end()
+        _DOTS[level] = QIcon(pm)
+    return _DOTS[level]
 
 
 class DropTable(QTableWidget):
@@ -39,6 +51,9 @@ class DropTable(QTableWidget):
         self.setShowGrid(False)
         self.setFrameShape(QFrame.NoFrame)
         self.verticalHeader().setDefaultSectionSize(40)
+        self.setIconSize(QSize(16, 16))
+        self.setWordWrap(True)
+        self.verticalHeader().setMinimumSectionSize(40)
         h = self.horizontalHeader()
         h.setSectionResizeMode(COL_FILE, QHeaderView.Stretch)
         h.setSectionResizeMode(COL_ROLE, QHeaderView.Fixed)
@@ -103,7 +118,7 @@ class MainWindow(QMainWindow):
     def __init__(self, show_dialogs=True):
         super().__init__()
         self.show_dialogs = show_dialogs
-        self.setWindowTitle('Dental Base Model')
+        self.setWindowTitle('Dental Scan to Model Builder')
         self.resize(1140, 800); self.setMinimumSize(1000, 760)
         self._proc = None
         self._running = False
@@ -137,11 +152,11 @@ class MainWindow(QMainWindow):
         h = QLabel(help_text); h.setObjectName('help'); h.setWordWrap(True); layout.addWidget(h)
 
     def _build_ui(self):
-        settings = QSettings('DentalBaseModel', 'gui')
+        settings = QSettings('DentalScanToModelBuilder', 'gui')
         root = QWidget(); root.setObjectName('root')
         outer = QVBoxLayout(root); outer.setContentsMargins(32, 26, 32, 22); outer.setSpacing(14)
 
-        title = QLabel('Dental Base Model'); title.setObjectName('title')
+        title = QLabel('Dental Scan to Model Builder'); title.setObjectName('title')
         sub = QLabel('Turn an intraoral scan into a watertight, flat-based model that is ready to 3D print. '
                      'Your teeth are never changed.'); sub.setObjectName('subtitle'); sub.setWordWrap(True)
         outer.addWidget(title); outer.addWidget(sub)
@@ -318,7 +333,8 @@ class MainWindow(QMainWindow):
         self.table.setCellWidget(r, COL_ROLE, combo)
         out = QTableWidgetItem(os.path.basename(output_path(path))); out.setToolTip(output_path(path))
         self.table.setItem(r, COL_OUT, out)
-        self.table.setItem(r, COL_STATUS, QTableWidgetItem(f'Ready · {info}'))
+        self.table.setItem(r, COL_STATUS, QTableWidgetItem(''))
+        self._set_status(path, f'Ready · {info}', 'ready')
 
     def _browse(self):
         files, _ = QFileDialog.getOpenFileNames(self, 'Select binary STL scans', self._last_dir or '', 'STL files (*.stl *.STL)')
@@ -374,10 +390,12 @@ class MainWindow(QMainWindow):
                 return r
         return -1
 
-    def _set_status(self, path, text):
+    def _set_status(self, path, text, level='ready'):
         r = self._row_of(path)
         if r >= 0:
-            self.table.item(r, COL_STATUS).setText(text)
+            it = self.table.item(r, COL_STATUS)
+            it.setText(text); it.setIcon(status_dot(level)); it.setToolTip(text)
+            self.table.resizeRowToContents(r)
 
     def generate(self):
         if self._running or not self.paths():
@@ -406,7 +424,7 @@ class MainWindow(QMainWindow):
             scr = self.screen().availableGeometry().height() - 40 if self.screen() else want
             self.resize(self.width(), min(want, scr))
         for p, _ in files:
-            self._set_status(p, 'Queued')
+            self._set_status(p, 'Queued', 'queued')
         self._log(f'--- Generating {self._total_jobs} job(s) with {self.options()}')
         self._set_running(True)
         self._start_next()
@@ -416,7 +434,7 @@ class MainWindow(QMainWindow):
             return self._finish()
         job = self._queue.pop(0); self._current = job; self._reports = []; self._buf = ''
         for p in job.inputs:
-            self._set_status(p, 'Running…')
+            self._set_status(p, 'Running…', 'running')
         self.statusBar().showMessage(f'Processing: {job.label}')
         self._log(f'=== {job.label}')
         self.dialog.begin_job(' + '.join(os.path.basename(p) for p in job.inputs), len(job.inputs))
@@ -474,14 +492,16 @@ class MainWindow(QMainWindow):
             return
         for i, (inp, out) in enumerate(zip(job.inputs, job.outputs)):
             if not ok:
-                self._set_status(inp, ('Cancelled' if reason == 'cancelled' else 'Failed') + (f' · {reason}' if reason != 'cancelled' else ''))
+                cancelled = reason == 'cancelled'
+                self._set_status(inp, 'Cancelled' if cancelled else f'Failed · {reason}', 'cancelled' if cancelled else 'bad')
                 continue
             good, msg = check_binary_stl(out) if os.path.exists(out) else (False, 'output file missing')
             if not good:
-                self._set_status(inp, f'Failed · {msg}'); self._log(f'⚠ {os.path.basename(out)}: {msg}'); continue
+                self._set_status(inp, f'Failed · {msg}', 'bad'); self._log(f'⚠ {os.path.basename(out)}: {msg}'); continue
             rep = self._reports[i] if i < len(self._reports) else None
-            bad = rep is not None and (not rep.get('watertight') or rep.get('euler') not in (None, 2))
-            self._set_status(inp, ('Done, check mesh · ' if bad else 'Done ✓ · ') + (J.summarize(rep) if rep else msg))
+            level, why = J.classify(rep)
+            bad = level == 'warn'
+            self._set_status(inp, ('Done, check mesh · ' if bad else 'Done ✓ · ') + (J.summarize(rep) if rep else msg), level)
             self._summaries.append(f'{os.path.basename(out)}: ' + (J.summarize(rep) if rep else msg) + (' (please check the model)' if bad else ''))
             self._last_out_dir = os.path.dirname(out)
         self.dialog.finish_job(ok)
@@ -496,7 +516,7 @@ class MainWindow(QMainWindow):
         self._log('--- cancelling…')
         for j in self._queue:
             for p in j.inputs:
-                self._set_status(p, 'Cancelled')
+                self._set_status(p, 'Cancelled', 'cancelled')
         self._queue = []
         self._proc.kill()
 
@@ -544,6 +564,7 @@ def apply_theme(app):
 
 def main():
     app = QApplication(sys.argv)
+    app.setApplicationName('Dental Scan to Model Builder'); app.setApplicationDisplayName('Dental Scan to Model Builder')
     apply_theme(app)
     w = MainWindow()
     w.show()
