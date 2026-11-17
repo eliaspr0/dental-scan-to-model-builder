@@ -9,6 +9,7 @@ Guarantees (checked after every export, see check_tooth_preservation):
 import time, json
 import numpy as np, trimesh, scipy.sparse as sp, scipy.sparse.csgraph as csg
 from scipy.spatial import cKDTree
+import igl
 from . import dbase
 
 
@@ -24,6 +25,14 @@ def stage(i, verbose=True):
     """Machine-readable progress line (the GUI parses it): @@STAGE <i>/<n> <label>"""
     if verbose:
         print(f'@@STAGE {i}/{len(STAGES)} {STAGES[i - 1]}', flush=True)
+
+
+# "Second look" for teeth the curvature seeds miss (see segment_crowns)
+TOOTH_RISE_MM = 6.0   # a vertex this far above the local gum level counts as tooth...
+TOOTH_CORE_MM = 1.0   # ...if it is also this far inside such a tall region,
+TOOTH_FACING = 0.75   # ...faces up (chewing surface, not a steep gum slope),
+TOOTH_SLICES = 120    # ...and lies in a part of the arch (cross-section) where
+TOOTH_COVER = 0.4     # less than this share of what stands tall was already found as tooth
 
 
 def segment_crowns(V, F, H, beta=40.0, tau=0.0):
@@ -55,6 +64,27 @@ def segment_crowns(V, F, H, beta=40.0, tau=0.0):
     tooth_seed = np.zeros(n, bool); tooth_seed[idx[big]] = True; tooth_seed &= cand
     ging_seed = (d_border < 1.5) & ~tooth_seed
     p = dbase.random_walker(V, F, H, np.where(tooth_seed)[0], np.where(ging_seed)[0], beta=beta, tau=tau)
+    # Second look. Teeth with no strong curvature peak (flat/worn molars at the far end of the scan, an implant scan body)
+    # got no seed above and are labelled gum. If a part of the arch has no tooth at all yet something there stands several
+    # mm above the gum, seed it as tooth and run the walker again. Parts of the arch that already contain teeth are left
+    # exactly as before (so well-detected scans do not change).
+    ns = TOOTH_SLICES
+    sl = dbase.arch_slices(V, ns)
+    rise = dbase.height_above_gum(V)
+    n_tooth = np.bincount(sl[p > 0.5], minlength=ns).astype(float)
+    n_tall = np.bincount(sl[(rise > TOOTH_RISE_MM) & interior], minlength=ns).astype(float)
+    covered = n_tooth >= TOOTH_COVER * np.maximum(n_tall, 1.0)    # most of what stands tall here is already tooth
+    tall = (rise > TOOTH_RISE_MM) & interior & ~covered[sl]
+    d_edge = dbase.geodesic_from(V, F, ~tall)                  # distance to the edge of the tall region
+    up_facing = np.asarray(igl.per_vertex_normals(V, F))[:, 2] > TOOTH_FACING    # chewing surfaces face up
+    core = tall & (d_edge > TOOTH_CORE_MM) & up_facing
+    if core.any():
+        nct, labt = csg.connected_components(Ac[core][:, core], directed=False)
+        big_t = np.isin(labt, np.where(np.bincount(labt) >= 300)[0])
+        extra = np.zeros(n, bool); extra[np.where(core)[0][big_t]] = True
+        if extra.any():
+            seeds = tooth_seed | extra
+            p = dbase.random_walker(V, F, H, np.where(seeds)[0], np.where(ging_seed & ~extra)[0], beta=beta, tau=tau)
     return p, bv
 
 
@@ -197,7 +227,14 @@ def make_base(path_in, path_out, offset=4.5, smooth_t=6.0, loop_sigma=1.5, base_
     g, d_tooth, d_border, nbridge = bridged_trim_field(V, F, mask, bv, offset, border_keepout, smooth_t, t0=t0, protect_mm=pm)
     V2, F2, oid = dbase.cut_mesh(V, F, g)
     V2, F2, oid = keep_largest_component(V2, F2, oid)
+    F2, dropped = dbase.drop_nonmanifold_faces(F2)
+    if dropped:
+        log(t0, f'removed {dropped} faces around a fold in the raw scan (an edge shared by more than two faces); no vertex moved')
     F2, holes = dbase.fill_small_holes(V2, F2)
+    orphan_orig = np.array([], int)
+    if dropped:                       # vertices that only belonged to the removed fold faces are no geometry: nothing left to keep
+        orphan = np.setdiff1d(np.arange(len(V2)), np.unique(F2))
+        orphan_orig = oid[orphan][oid[orphan] >= 0]
     if holes['filled'] or holes['skipped']:
         log(t0, f"closed {holes['filled']} small hole(s) in the scan surface (longest edge {holes['largest_mm']} mm); no vertices moved"
                 + (f", {holes['skipped']} too large to close" if holes['skipped'] else ''))
@@ -254,7 +291,11 @@ def make_base(path_in, path_out, offset=4.5, smooth_t=6.0, loop_sigma=1.5, base_
                faces=int(len(Fb)), crown_area_kept_pct=round(kept_tooth, 2), bridges=int(nbridge),
                extents_mm=np.round(out.extents, 1).tolist(), occlusal_normal=np.round(up, 4).tolist(), base_tilt_deg=round(tilt_deg, 2),
                **{k: (round(v, 2) if isinstance(v, float) else v) for k, v in info.items() if k != 'z_base'})
-    rep.update(check_tooth_preservation(V0, mask, path_out, prot_full if protect_mm >= 0 else None))
+    chk_mask = mask.copy(); chk_prot = prot_full.copy()
+    chk_mask[orphan_orig] = False; chk_prot[orphan_orig] = False
+    if len(orphan_orig):
+        rep['fold_vertices_dropped'] = int(len(orphan_orig))
+    rep.update(check_tooth_preservation(V0, chk_mask, path_out, chk_prot if protect_mm >= 0 else None))
     log(t0, f'exported {path_out}: {rep}')
     if return_all:
         return rep, dict(V0=V0, V=V, F=F, H=H, p=p, mask=mask, g=g, Vb=Vb_o, Fb=Fb, R=R, c=c, oid=oid, D=D, prot=prot_full)

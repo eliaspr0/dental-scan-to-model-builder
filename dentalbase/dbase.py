@@ -108,6 +108,55 @@ def estimate_up(V, N, H, iters=3):
     return up
 
 
+def arch_slices(V, n_slices=120):
+    """Index (0..n_slices-1) of the cross-section of the arch each vertex belongs to: angular slices around the arch
+    centroid in plan view, numbered from the open side of the horseshoe."""
+    c = V[:, :2].mean(0)
+    ang = np.arctan2(V[:, 1] - c[1], V[:, 0] - c[0])
+    srt = np.sort(ang); gaps = np.diff(np.r_[srt, srt[0] + 2 * np.pi])
+    start = srt[np.argmax(gaps)] + gaps.max()
+    return np.minimum((np.mod(ang - start, 2 * np.pi) / (2 * np.pi) * n_slices).astype(int), n_slices - 1)
+
+
+def height_above_gum(V, n_slices=120, pct=10.0, min_pts=50):
+    """Height of every vertex above the local gum level (V in the working frame, Z = occlusal normal).
+
+    The arch is cut into thin cross-sections (angular slices around its centroid, started at the open side of the
+    horseshoe). Each cross-section is split into an inner (tongue side) and an outer (cheek side) half; the gum level of a
+    half is the `pct`-th percentile of its heights (smoothed along the arch), because the gum is the low part on each side
+    of the crown. Teeth, and anything else that stands up from the gum (e.g. an implant scan body), come out several mm
+    high; gum comes out low. Independent of curvature."""
+    from scipy.ndimage import median_filter, uniform_filter1d
+    h = V[:, 2]
+    c = V[:, :2].mean(0)
+    dx, dy = V[:, 0] - c[0], V[:, 1] - c[1]
+    ang = np.arctan2(dy, dx); rad = np.hypot(dx, dy)
+    srt = np.sort(ang); gaps = np.diff(np.r_[srt, srt[0] + 2 * np.pi])
+    start = srt[np.argmax(gaps)] + gaps.max()
+    b = np.minimum((np.mod(ang - start, 2 * np.pi) / (2 * np.pi) * n_slices).astype(int), n_slices - 1)
+    side = np.zeros(len(V), int)
+    fl = np.full((n_slices, 2), np.nan)
+    for k in range(n_slices):
+        ik = np.where(b == k)[0]
+        if len(ik) < 2 * min_pts:
+            continue
+        r = rad[ik]
+        mid = 0.5 * (np.percentile(r, 2) + np.percentile(r, 98))
+        out = r >= mid
+        side[ik[out]] = 1
+        for s_ in (0, 1):
+            q = h[ik[out == bool(s_)]]
+            if len(q) >= min_pts:
+                fl[k, s_] = np.percentile(q, pct)
+    if (np.isfinite(fl).all(1)).sum() < 8:
+        return np.zeros(len(V))
+    for s_ in (0, 1):
+        ok = np.isfinite(fl[:, s_])
+        col = np.interp(np.arange(n_slices), np.where(ok)[0], fl[ok, s_])
+        fl[:, s_] = uniform_filter1d(median_filter(col, 5, mode='nearest'), 3, mode='nearest')
+    return h - fl[b, side]
+
+
 def tip_plane_normal(V, mask, n_bins=36, tip_pct=95.0, min_bins=10):
     """Plane through the tooth tips (incisal edges / cusp tips) of the crowns, as a unit normal in V's frame.
 
@@ -335,7 +384,9 @@ def trim_field(V, F, tooth_mask, bv_mask, offset, border_keepout=2.5, smooth_t=3
     if protect_mm is not None and protect_mm >= 0:
         # tooth guarantee: crowns (+ a small margin ring) are ALWAYS kept, whatever smoothing / border keep-out say.
         # (cut_mesh treats |g|<0.01 as outside, so use a clearly negative value)
-        g = np.where(d_tooth <= protect_mm, np.minimum(g, -0.05), g)
+        # (the heat-method distance of a source vertex is not always exactly 0, so the crown vertices themselves are
+        # protected explicitly as well)
+        g = np.where((d_tooth <= protect_mm) | tooth_mask, np.minimum(g, -0.05), g)
     return g, d_tooth, d_border
 
 
@@ -399,6 +450,84 @@ def boundary_loops(F, V=None):
     return loops
 
 
+def _avoid_existing_chords(T, Q, vid, existing, max_n=40):
+    """The hole triangulation T (indices into the loop polygon Q, vertex ids `vid`) must not use a chord between two loop
+    vertices that the scan already connects by an edge elsewhere: that edge would then belong to three faces (non-manifold).
+    If it does, re-triangulate with a small dynamic programme that forbids such chords. Returns T (possibly replaced)."""
+    n = len(Q)
+
+    def key(a, b):
+        a, b = int(vid[a]), int(vid[b])
+        return (a, b) if a < b else (b, a)
+
+    def chords(Tr):
+        out = set()
+        for t in Tr:
+            for a, b in ((t[0], t[1]), (t[1], t[2]), (t[2], t[0])):
+                if (a - b) % n not in (1, n - 1):
+                    out.add(key(a, b))
+        return out
+    if not (chords(T) & existing) or n > max_n:
+        return T
+    INF = float('inf')
+
+    def tri_ok(i, k, j):
+        a, b, c = Q[i], Q[k], Q[j]
+        cr = (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1])
+        if cr <= 1e-12:
+            return False
+        for m in range(n):
+            if m in (i, k, j):
+                continue
+            p = Q[m]
+            d1 = (b[0] - a[0]) * (p[1] - a[1]) - (p[0] - a[0]) * (b[1] - a[1])
+            d2 = (c[0] - b[0]) * (p[1] - b[1]) - (p[0] - b[0]) * (c[1] - b[1])
+            d3 = (a[0] - c[0]) * (p[1] - c[1]) - (p[0] - c[0]) * (a[1] - c[1])
+            if d1 > 0 and d2 > 0 and d3 > 0:
+                return False
+        return True
+
+    def chord_ok(i, j):
+        return j - i == 1 or (i == 0 and j == n - 1) or key(i, j) not in existing
+    cost = np.full((n, n), INF); pick = np.full((n, n), -1)
+    for i in range(n - 1):
+        cost[i, i + 1] = 0.0
+    for span in range(2, n):
+        for i in range(0, n - span):
+            j = i + span
+            if not chord_ok(i, j):
+                continue
+            for k in range(i + 1, j):
+                if cost[i, k] == INF or cost[k, j] == INF or not tri_ok(i, k, j):
+                    continue
+                w = cost[i, k] + cost[k, j] + float(np.linalg.norm(Q[i] - Q[j]))
+                if w < cost[i, j]:
+                    cost[i, j] = w; pick[i, j] = k
+    if cost[0, n - 1] == INF:
+        return T
+    out = []; stack = [(0, n - 1)]
+    while stack:
+        i, j = stack.pop()
+        if j - i < 2:
+            continue
+        k = pick[i, j]; out.append((i, k, j)); stack += [(i, k), (k, j)]
+    return np.array(out, dtype=T.dtype)
+
+
+def drop_nonmanifold_faces(F):
+    """Remove the faces around every edge that belongs to more than two faces (a defect of the raw scan: a fold or a
+    doubled sliver). No vertex is moved or removed; the gap that is left is closed afterwards by fill_small_holes.
+    Returns (F_new, number_of_faces_dropped)."""
+    e = np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], axis=1)
+    u, inv, cnt = np.unique(e, axis=0, return_inverse=True, return_counts=True)
+    bad_edge = cnt[inv.ravel()] > 2
+    nf = len(F)
+    bad_face = bad_edge[:nf] | bad_edge[nf:2 * nf] | bad_edge[2 * nf:]
+    if not bad_face.any():
+        return F, 0
+    return F[~bad_face], int(bad_face.sum())
+
+
 def fill_small_holes(V, F, max_len_mm=60.0):
     """Close the holes inside a patch (every boundary loop except the longest = the trimline) with triangles that use only the
     loop's own vertices: no vertex is added or moved, so the scan around a hole is untouched. A hole is a tiny gap in the raw
@@ -409,6 +538,7 @@ def fill_small_holes(V, F, max_len_mm=60.0):
         return F, dict(filled=0, skipped=0, largest_mm=0.0)
     main = max(loops, key=len)
     add = []; filled = 0; skipped = 0; largest = 0.0
+    existing = set(map(tuple, np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], axis=1).tolist()))
     for lp in loops:
         if lp is main:
             continue
@@ -431,6 +561,7 @@ def fill_small_holes(V, F, max_len_mm=60.0):
         t0_, t1_, t2_ = Q[T[:, 0]], Q[T[:, 1]], Q[T[:, 2]]
         sgn = (t1_[:, 0] - t0_[:, 0]) * (t2_[:, 1] - t0_[:, 1]) - (t2_[:, 0] - t0_[:, 0]) * (t1_[:, 1] - t0_[:, 1])
         T = np.where((sgn < 0)[:, None], T[:, ::-1], T)
+        T = _avoid_existing_chords(T, Q, rev, existing)
         add.append(rev[T]); filled += 1; largest = max(largest, length)
     if not add:
         return F, dict(filled=0, skipped=skipped, largest_mm=0.0)
