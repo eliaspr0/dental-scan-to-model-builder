@@ -41,32 +41,66 @@ def mean_curvature(V, F, N, t=0.15):
     A = (M + t * L).tocsc()
     lu = splu(A)
     Vs = np.column_stack([lu.solve(M @ V[:, i]) for i in range(3)])
+    if not np.isfinite(Vs).all():
+        Vs = np.where(np.isfinite(Vs), Vs, V)
     Ls, Ms = cot_laplacian(Vs, F)
     Hn = -(Ls @ Vs)                      # = 2 * H * n * area  (mean curvature normal * mass)
     area = np.asarray(Ms.sum(axis=1)).ravel()
-    Hn = Hn / area[:, None]
+    Hn = Hn / np.maximum(area, 1e-12)[:, None]
     # sign: mean curvature vector points inward for convex surface (with outward normal)
     Ns = igl.per_vertex_normals(Vs, F)
     H = -0.5 * np.einsum('ij,ij->i', Hn, Ns)
+    # sliver triangles can give inf/NaN curvature on some machines: keep every value finite (finite input is unchanged)
+    H = np.nan_to_num(H, nan=0.0, posinf=1e6, neginf=-1e6)
     return H, Vs
+
+
+def _principal_axes(X):
+    """Principal axes of the points X (n,3), as columns ordered by increasing variance (like np.linalg.eigh of the covariance).
+    Fail-safe: drops non-finite rows and, if the eigen-solver does not converge (it can on some Windows math libraries, even
+    for valid input), falls back to an SVD. Returns None if no axes can be computed (fewer than 4 usable points)."""
+    X = np.asarray(X, float)
+    X = X[np.isfinite(X).all(axis=1)]
+    if len(X) < 4:
+        return None
+    Xc = X - X.mean(0)
+    try:
+        w, U = np.linalg.eigh(np.cov(Xc.T))
+        if np.isfinite(U).all():
+            return U
+    except np.linalg.LinAlgError:
+        pass
+    for driver in ('gesdd', 'gesvd'):
+        try:
+            import scipy.linalg as sl
+            _, _, vt = sl.svd(Xc / max(np.abs(Xc).max(), 1e-12), full_matrices=False, lapack_driver=driver)
+            return vt[::-1].T
+        except Exception:
+            continue
+    return None
 
 
 def estimate_up(V, N, H, iters=3):
     """Occlusal-plane normal (pointing from gingiva toward the crowns) from geometry only."""
     c = V.mean(0)
     # initial: smallest PCA axis, sign from mean outward normal
-    w, U = np.linalg.eigh(np.cov((V - c).T))
+    U = _principal_axes(V)
+    if U is None:
+        raise ValueError('the scan has too few valid points to find the bite plane')
     up = U[:, 0]
-    if np.dot(up, N.mean(0)) < 0:
+    Nm = np.nanmean(np.where(np.isfinite(N), N, np.nan), axis=0)
+    if np.dot(up, Nm) < 0:
         up = -up
+    H = np.nan_to_num(H, nan=0.0, posinf=1e6, neginf=-1e6)
     for _ in range(iters):
         h = (V - c) @ up
         # cusp tips / incisal edges: strongly convex AND high
         sel = (H > np.percentile(H, 92)) & (h > np.percentile(h, 55))
         P = V[sel]
-        cc = P.mean(0)
         # plane fit to those points (least squares) -> normal = smallest axis
-        _, Uc = np.linalg.eigh(np.cov((P - cc).T))
+        Uc = _principal_axes(P)
+        if Uc is None:                       # no usable cusp points: keep the current estimate
+            break
         n = Uc[:, 0]
         if np.dot(n, up) < 0:
             n = -n
@@ -80,7 +114,9 @@ def orientation_frame(V, up):
     c = V.mean(0)
     P = V - c
     P2 = P - np.outer(P @ up, up)
-    w, U = np.linalg.eigh(np.cov(P2.T))
+    U = _principal_axes(P2)
+    if U is None:
+        raise ValueError('the scan has too few valid points to find its orientation')
     # two largest in-plane axes: those orthogonal to up
     cand = [U[:, i] for i in range(3)]
     cand.sort(key=lambda a: -abs(np.dot(a, up)))  # last two are in-plane-ish

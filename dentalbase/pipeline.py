@@ -27,11 +27,23 @@ def stage(i, verbose=True):
 
 
 def segment_crowns(V, F, H, beta=40.0, tau=0.0):
-    """Tooth/gingiva probability from curvature barriers (random walker). Seeds: cusp tips vs. scan-border band."""
     n = len(V)
     A = dbase.mesh_adjacency(V, F)
     h = V[:, 2]
-    cand = (H > np.percentile(H, 92)) & (h > np.percentile(h, 50))
+    # Ragged scan borders / spiky triangles carry huge curvature values that are
+    # not teeth. Measure the thresholds on the interior only and never seed there.
+    bv = np.zeros(n, bool); bv[dbase.boundary_vertices(F, n)] = True
+    d_border = dbase.geodesic_from(V, F, bv)
+    interior = d_border > 2.0
+    # spike vertices (degenerate/folded triangles) have |H| orders of magnitude above any real tooth surface
+    spike = np.abs(H) > 20.0
+    Asp = (dbase.mesh_adjacency(V, F) > 0).astype(np.int8)
+    for _ in range(2):
+        spike = spike | ((Asp @ spike.astype(np.int8)) > 0)
+    interior &= ~spike
+    if interior.sum() < 0.2 * n:
+        interior = np.ones(n, bool)
+    cand = (H > np.percentile(H[interior], 92)) & (h > np.percentile(h[interior], 50)) & interior
     Ac = (A > 0).astype(np.int8)
     dil = cand.copy()
     for _ in range(3):
@@ -41,8 +53,6 @@ def segment_crowns(V, F, H, beta=40.0, tau=0.0):
     sizes = np.bincount(lab); idx = np.where(dil)[0]
     big = np.isin(lab, np.where(sizes >= 300)[0])
     tooth_seed = np.zeros(n, bool); tooth_seed[idx[big]] = True; tooth_seed &= cand
-    bv = np.zeros(n, bool); bv[dbase.boundary_vertices(F, n)] = True
-    d_border = dbase.geodesic_from(V, F, bv)
     ging_seed = (d_border < 1.5) & ~tooth_seed
     p = dbase.random_walker(V, F, H, np.where(tooth_seed)[0], np.where(ging_seed)[0], beta=beta, tau=tau)
     return p, bv
