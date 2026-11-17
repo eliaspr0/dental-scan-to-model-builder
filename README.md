@@ -75,8 +75,8 @@ Each file gets a coloured status dot:
 | ⚪ grey | Ready or waiting in the queue |
 | 🔵 blue | Running now |
 | 🟢 green | **Done**: watertight, one solid piece, teeth exactly as scanned |
-| 🟡 yellow | **Done, but check the mesh**: not watertight, has tunnels (see [limitations](#known-limitations)), or teeth not exact |
-| 🔴 red | **Failed**: the message says why |
+| 🟡 yellow | **Done, but check the mesh**: not watertight, or has tunnels (see [limitations](#known-limitations)) |
+| 🔴 red | **Failed**: the message says why. This includes the case where the teeth would differ from your scan: such a file is flagged *do not use* |
 | ⚫ dark grey | Cancelled |
 
 > Only **binary** STL files are accepted (the usual output of scanner software). Scans are assumed to be in **millimetres**.

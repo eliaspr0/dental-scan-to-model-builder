@@ -67,7 +67,8 @@ class T(unittest.TestCase):
         self.assertEqual(jobs.classify(ok)[0], 'ok')
         self.assertEqual(jobs.classify(dict(ok, watertight=False))[0], 'warn')
         self.assertEqual(jobs.classify(dict(ok, euler=-4))[0], 'warn')
-        self.assertEqual(jobs.classify(dict(ok, crown_exact_pct=99.9))[0], 'warn')
+        self.assertEqual(jobs.classify(dict(ok, crown_exact_pct=99.9))[0], 'bad')
+        self.assertEqual(jobs.classify(dict(ok, watertight=False, crown_exact_pct=99.9))[0], 'bad')   # teeth rule wins
         self.assertEqual(jobs.classify(None)[0], 'ok')
 
     def test_report(self):

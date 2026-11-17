@@ -92,18 +92,19 @@ def parse_stage(line):
 
 
 def classify(rep):
-    """Outcome of a finished job from its backend report: ('ok' | 'warn', short reason).
-    ok   = watertight, one solid (no tunnels) and the teeth exactly as scanned.
-    warn = finished, but worth a look: not watertight, tunnels/handles in the surface, or tooth vertices not exact."""
+    """Outcome of a finished job from its backend report: ('ok' | 'warn' | 'bad', short reason).
+    bad  = the teeth were NOT reproduced exactly. This must never happen, so it is a failure, never a warning.
+    warn = finished, but worth a look: not watertight, or tunnels/handles in the surface.
+    ok   = watertight, one solid (no tunnels) and the teeth exactly as scanned."""
     if rep is None:
         return 'ok', ''
+    t = rep.get('crown_exact_pct')
+    if t is not None and t < 100:
+        return 'bad', 'tooth geometry differs from the scan'
     if not rep.get('watertight'):
         return 'warn', 'not watertight'
     if rep.get('euler') not in (None, 2):
         return 'warn', 'has tunnels (already in the scan)'
-    t = rep.get('crown_exact_pct')
-    if t is not None and t < 100:
-        return 'warn', 'teeth not exact'
     return 'ok', ''
 
 

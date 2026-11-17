@@ -500,9 +500,12 @@ class MainWindow(QMainWindow):
                 self._set_status(inp, f'Failed · {msg}', 'bad'); self._log(f'⚠ {os.path.basename(out)}: {msg}'); continue
             rep = self._reports[i] if i < len(self._reports) else None
             level, why = J.classify(rep)
-            bad = level == 'warn'
-            self._set_status(inp, ('Done, check mesh · ' if bad else 'Done ✓ · ') + (J.summarize(rep) if rep else msg), level)
-            self._summaries.append(f'{os.path.basename(out)}: ' + (J.summarize(rep) if rep else msg) + (' (please check the model)' if bad else ''))
+            lead = {'ok': 'Done ✓ · ', 'warn': 'Done, check mesh · ', 'bad': 'FAILED, teeth altered · '}[level]
+            self._set_status(inp, lead + (J.summarize(rep) if rep else msg), level)
+            self._summaries.append(f'{os.path.basename(out)}: ' + (J.summarize(rep) if rep else msg)
+                                   + {'ok': '', 'warn': ' (please check the model)', 'bad': ' (DO NOT USE: the teeth differ from the scan)'}[level])
+            if level == 'bad':
+                self._log(f'⚠ {os.path.basename(out)}: tooth geometry differs from the scan; do not use this output')
             self._last_out_dir = os.path.dirname(out)
         self.dialog.finish_job(ok)
         if ok:
