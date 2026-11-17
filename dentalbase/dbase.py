@@ -108,6 +108,59 @@ def estimate_up(V, N, H, iters=3):
     return up
 
 
+def tip_plane_normal(V, mask, n_bins=36, tip_pct=95.0, min_bins=10):
+    """Plane through the tooth tips (incisal edges / cusp tips) of the crowns, as a unit normal in V's frame.
+
+    V is in the working frame (Z ~ occlusal normal) and `mask` marks crown vertices. The arch is cut into angular
+    slices around its centroid (plan view) so that every part of the arch counts equally, the highest crown points of
+    each slice give one tip point, and a robust (outlier-trimmed) plane is fitted through those points.
+    Returns (normal, info) or (None, reason). The normal points the same way as +Z."""
+    P = V[mask]
+    P = P[np.isfinite(P).all(1)]
+    if len(P) < 500:
+        return None, 'too few crown points'
+    c = P[:, :2].mean(0)
+    ang = np.arctan2(P[:, 1] - c[1], P[:, 0] - c[0])
+    # start the slicing at the biggest angular gap (the open side of the horseshoe), so the slices follow the arch
+    srt = np.sort(ang); gaps = np.diff(np.r_[srt, srt[0] + 2 * np.pi])
+    start = srt[np.argmax(gaps)] + gaps.max()
+    a = np.mod(ang - start, 2 * np.pi)
+    b = np.minimum((a / (2 * np.pi) * n_bins).astype(int), n_bins - 1)
+    tips = []
+    for k in range(n_bins):
+        q = P[b == k]
+        if len(q) < 30:
+            continue
+        top = q[q[:, 2] >= np.percentile(q[:, 2], tip_pct)]
+        tips.append(np.median(top, axis=0))
+    tips = np.array(tips)
+    if len(tips) < min_bins:
+        return None, f'only {len(tips)} usable arch slices'
+    keep = np.ones(len(tips), bool)
+    for _ in range(3):                                   # least squares z = ax+by+c, trimming outlying tips
+        A = np.c_[tips[keep, 0], tips[keep, 1], np.ones(keep.sum())]
+        coef, *_ = np.linalg.lstsq(A, tips[keep, 2], rcond=None)
+        res = tips[:, 2] - np.c_[tips[:, :2], np.ones(len(tips))] @ coef
+        mad = np.median(np.abs(res[keep] - np.median(res[keep]))) * 1.4826 + 1e-6
+        nk = np.abs(res - np.median(res[keep])) < 2.5 * mad
+        if nk.sum() < min_bins or (nk == keep).all():
+            break
+        keep = nk
+    nrm = np.array([-coef[0], -coef[1], 1.0]); nrm /= np.linalg.norm(nrm)
+    return nrm, dict(tips=int(keep.sum()), tips_total=int(len(tips)), rms_mm=float(np.sqrt(np.mean(res[keep] ** 2))))
+
+
+def tilt_rotation(n):
+    """Rotation matrix R2 with R2 @ n = (0, 0, 1) (shortest rotation)."""
+    n = np.asarray(n, float) / np.linalg.norm(n)
+    z = np.array([0.0, 0.0, 1.0])
+    v = np.cross(n, z); s = np.linalg.norm(v); cth = float(n @ z)
+    if s < 1e-12:
+        return np.eye(3)
+    vx = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
+    return np.eye(3) + vx + vx @ vx * ((1 - cth) / s ** 2)
+
+
 def orientation_frame(V, up):
     """Rotation R (rows = new axes) so that up -> +Z, arch long axis -> X, centered at arch centroid."""
     up = up / np.linalg.norm(up)

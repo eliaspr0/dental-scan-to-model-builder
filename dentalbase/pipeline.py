@@ -149,10 +149,13 @@ def check_tooth_preservation(V0, mask, out_path, extra_mask=None):
 
 
 def make_base(path_in, path_out, offset=4.5, smooth_t=6.0, loop_sigma=1.5, base_thickness=0.5,
-              border_keepout=2.5, protect_mm=None, up=None, trim_mode='base', strip=None, strip_min=1.0, verbose=True, return_all=False):
+              border_keepout=2.5, protect_mm=None, up=None, trim_mode='base', strip=None, strip_min=1.0, verbose=True, return_all=False,
+              follow_tips=False, max_tilt_deg=10.0):
     """up: optional occlusal normal (gingiva->crowns) in the scan's own coordinates, e.g. a shared bite-plane normal
     for an upper/lower pair. protect_mm: crowns + this ring are guaranteed untouched (default min(1, offset/2));
-    pass a negative value to disable (for A/B testing only)."""
+    pass a negative value to disable (for A/B testing only).
+    follow_tips: make the flat base parallel to the tooth tips (plane through the incisal edges / cusp tips of the crowns)
+    instead of the estimated bite plane; ignored (with a note) if that plane differs by more than max_tilt_deg."""
     t0 = time.time()
     if protect_mm is None:
         protect_mm = min(1.0, 0.5 * offset)
@@ -174,6 +177,21 @@ def make_base(path_in, path_out, offset=4.5, smooth_t=6.0, loop_sigma=1.5, base_
     p, bv = segment_crowns(V, F, H)
     mask = dbase.clean_tooth_mask(V, F, p)
     log(t0, f'tooth region {mask.sum()} verts')
+    tilt_deg = 0.0
+    if follow_tips:
+        nt, tinfo = dbase.tip_plane_normal(V, mask)
+        if nt is None:
+            log(t0, f'base follows the bite plane (tooth-tip plane unavailable: {tinfo})')
+        else:
+            tilt_deg = float(np.degrees(np.arccos(np.clip(nt[2], -1, 1))))
+            if tilt_deg > max_tilt_deg:
+                log(t0, f'base follows the bite plane (tooth-tip plane is {tilt_deg:.1f} deg away, limit {max_tilt_deg:g} deg)')
+                tilt_deg = 0.0
+            else:
+                R2 = dbase.tilt_rotation(nt)
+                V = V @ R2.T                                      # re-orient the working frame; mask/p/bv are per-vertex, still valid
+                R = R2 @ R
+                log(t0, f"base follows the tooth tips: tilted {tilt_deg:.1f} deg from the bite plane ({tinfo['tips']}/{tinfo['tips_total']} arch slices, fit rms {tinfo['rms_mm']:.2f} mm)")
     pm = protect_mm if protect_mm >= 0 else None
     stage(4, verbose)
     g, d_tooth, d_border, nbridge = bridged_trim_field(V, F, mask, bv, offset, border_keepout, smooth_t, t0=t0, protect_mm=pm)
@@ -234,7 +252,7 @@ def make_base(path_in, path_out, offset=4.5, smooth_t=6.0, loop_sigma=1.5, base_
     rep = dict(watertight=bool(out.is_watertight), winding_consistent=bool(out.is_winding_consistent),
                is_volume=bool(out.is_volume), volume_mm3=round(float(out.volume), 1), euler=int(out.euler_number),
                faces=int(len(Fb)), crown_area_kept_pct=round(kept_tooth, 2), bridges=int(nbridge),
-               extents_mm=np.round(out.extents, 1).tolist(), occlusal_normal=np.round(up, 4).tolist(),
+               extents_mm=np.round(out.extents, 1).tolist(), occlusal_normal=np.round(up, 4).tolist(), base_tilt_deg=round(tilt_deg, 2),
                **{k: (round(v, 2) if isinstance(v, float) else v) for k, v in info.items() if k != 'z_base'})
     rep.update(check_tooth_preservation(V0, mask, path_out, prot_full if protect_mm >= 0 else None))
     log(t0, f'exported {path_out}: {rep}')

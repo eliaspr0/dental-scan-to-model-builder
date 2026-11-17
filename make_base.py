@@ -34,6 +34,7 @@ def main():
     ap.add_argument('--trim-mode', choices=['base', 'deform'], default='base', help="base (default): scan surface untouched, only the base outline is smoothed; deform: legacy, also blends the smoothing into the surface within ~5 mm of the trimline")
     ap.add_argument('--strip', type=float, default=None, help='advanced: width in mm of the strip along the cut edge where the scan follows the smoothed trimline (default: automatic: 1 mm where the edge moves noticeably, narrower where it barely moves, wider only if needed)')
     ap.add_argument('--preview', action='store_true', help='also write a PNG render next to each output')
+    ap.add_argument('--follow-tips', action='store_true', help='make the flat base parallel to the tooth tips (incisal edges / cusp tips) instead of the estimated bite plane; each jaw follows its own tips, also with --pair; ignored if that plane is >10 deg from the bite plane')
     ap.add_argument('--pair', nargs=2, metavar=('UPPER', 'LOWER'), help='articulated pair: both bases parallel to the shared bite plane; outputs stay in the scans\' original (bite-registered) coordinates')
     ap.add_argument('--pair-out', nargs=2, metavar=('UPPER_OUT', 'LOWER_OUT'), help='with --pair: explicit output paths (instead of --outdir); needs a single --offset')
     a = ap.parse_args()
@@ -53,7 +54,7 @@ def main():
                 uo = os.path.join(a.outdir, f"{os.path.splitext(os.path.basename(up))[0]}_base_o{off:g}.stl")
                 lo_o = os.path.join(a.outdir, f"{os.path.splitext(os.path.basename(lo))[0]}_base_o{off:g}.stl")
             print(f'\n=== pair (offset {off:g} mm): {up} + {lo}')
-            reps = make_pair(up, lo, uo, lo_o, offset=off, smooth_t=a.smooth, loop_sigma=a.loop_sigma, base_thickness=a.thickness, trim_mode=a.trim_mode, strip=a.strip)
+            reps = make_pair(up, lo, uo, lo_o, offset=off, smooth_t=a.smooth, loop_sigma=a.loop_sigma, base_thickness=a.thickness, trim_mode=a.trim_mode, strip=a.strip, follow_tips=a.follow_tips)
             for r, dst in zip(reps, (uo, lo_o)):
                 print(os.path.basename(dst), json.dumps({k: r[k] for k in ('watertight', 'euler', 'crown_exact_pct', 'crown_max_dev_mm', 'crown_area_kept_pct')}))
                 if not r['watertight'] or r['euler'] != 2:
@@ -76,7 +77,7 @@ def main():
 
     for src, dst, off in jobs:
         print(f'\n=== {src} -> {dst} (offset {off:g} mm)')
-        rep = make_base(src, dst, off, a.smooth, a.loop_sigma, a.thickness)
+        rep = make_base(src, dst, off, a.smooth, a.loop_sigma, a.thickness, trim_mode=a.trim_mode, strip=a.strip, follow_tips=a.follow_tips)
         print(json.dumps(rep))
         if not rep['watertight'] or rep['euler'] != 2:
             print('  WARNING: not a simple closed solid (watertight=%s, euler=%s). Euler != 2 means handles/tunnels, usually already in the raw scan. Run verify.py.' % (rep['watertight'], rep['euler']))

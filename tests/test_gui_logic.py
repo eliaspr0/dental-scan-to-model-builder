@@ -55,6 +55,13 @@ class T(unittest.TestCase):
         a = jobs.build_args(j, jobs.Options(strip=1.5), 'make_base.py', python='py')
         self.assertEqual(a[a.index('--strip') + 1], '1.5')
 
+    def test_follow_tips_option(self):
+        j = jobs.Job('single', ['/a/u.stl'], ['/a/u_output.stl'])
+        self.assertNotIn('--follow-tips', jobs.build_args(j, jobs.Options(), 'make_base.py', python='py'))
+        self.assertIn('--follow-tips', jobs.build_args(j, jobs.Options(follow_tips=True), 'make_base.py', python='py'))
+        p = jobs.Job('pair', ['/u', '/l'], ['/uo', '/lo'])
+        self.assertIn('--follow-tips', jobs.build_args(p, jobs.Options(follow_tips=True), 'make_base.py', python='py'))
+
     def test_report(self):
         self.assertIsNone(jobs.parse_report('[ 1.0s] loaded'))
         r = jobs.parse_report('{"watertight": true, "euler": 2, "crown_exact_pct": 100.0}')
