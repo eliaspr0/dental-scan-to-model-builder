@@ -193,7 +193,7 @@ class MainWindow(QMainWindow):
 
         # ---- step 2: settings
         card2, v2 = self._card(2, 'Choose your settings', 'The defaults are a good starting point. Hover over a value for more detail.')
-        self.sp_offset = self._spin(0.5, 15.0, 0.5, J.DEFAULTS['offset'], ' mm', 1,
+        self.sp_offset = self._spin(0.5, 15.0, 0.1, J.DEFAULTS['offset'], ' mm', 1,
                                     'Gingiva margin height: surface distance from the teeth to the trimline, where the base starts.')
         self.sp_smooth = self._spin(0.0, 30.0, 1.0, J.DEFAULTS['smooth'], '', 1, '')   # advanced; not shown (CLI --smooth)
         self.sp_smooth.setVisible(False)
