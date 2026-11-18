@@ -7,6 +7,7 @@ Guarantees (checked after every export, see check_tooth_preservation):
     input, never moved by smoothing and never cut away.
 """
 import time, json
+import os
 import numpy as np, trimesh, scipy.sparse as sp, scipy.sparse.csgraph as csg
 from scipy.spatial import cKDTree
 import igl
@@ -156,6 +157,8 @@ def estimate_arch_up(path_in):
     """Occlusal-plane normal (gingiva -> crowns) of one scan, in the scan's own coordinates."""
     m = dbase.load_clean(path_in)
     V = np.asarray(m.vertices, float); F = np.asarray(m.faces)
+    if not len(dbase.boundary_vertices(F, len(V))):
+        raise ScanError(os.path.basename(path_in) + ': ' + CLOSED_MSG)
     N = dbase.vertex_normals(m)
     H, _ = dbase.mean_curvature(V, F, N, t=0.15)
     return dbase.estimate_up(V, N, H)
@@ -178,6 +181,14 @@ def check_tooth_preservation(V0, mask, out_path, extra_mask=None):
     return rep
 
 
+class ScanError(ValueError):
+    """The input file cannot be used (message is meant for the user)."""
+
+
+CLOSED_MSG = ('this file has no open edge: it is already a closed model (for example an earlier _output file). '
+              'Please use the original raw scan.')
+
+
 def make_base(path_in, path_out, offset=4.5, smooth_t=6.0, loop_sigma=1.5, base_thickness=0.5,
               border_keepout=2.5, protect_mm=None, up=None, trim_mode='base', strip=None, strip_min=1.0, verbose=True, return_all=False,
               follow_tips=False, max_tilt_deg=10.0):
@@ -187,6 +198,7 @@ def make_base(path_in, path_out, offset=4.5, smooth_t=6.0, loop_sigma=1.5, base_
     follow_tips: make the flat base parallel to the tooth tips (plane through the incisal edges / cusp tips of the crowns)
     instead of the estimated bite plane; ignored (with a note) if that plane differs by more than max_tilt_deg."""
     t0 = time.time()
+    dbase.clear_cache()                     # per-mesh caches only live for one job
     if protect_mm is None:
         protect_mm = min(1.0, 0.5 * offset)
     stage(1, verbose)
@@ -194,6 +206,8 @@ def make_base(path_in, path_out, offset=4.5, smooth_t=6.0, loop_sigma=1.5, base_
     V0 = np.asarray(m.vertices, float); F = np.asarray(m.faces)      # ORIGINAL coordinates: never modified
     N = dbase.vertex_normals(m)
     log(t0, f'loaded {len(V0)} verts / {len(F)} faces')
+    if not len(dbase.boundary_vertices(F, len(V0))):
+        raise ScanError(CLOSED_MSG)
     H, _ = dbase.mean_curvature(V0, F, N, t=0.15)
     stage(2, verbose)
     if up is None:
