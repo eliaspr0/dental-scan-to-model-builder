@@ -200,7 +200,7 @@ class MainWindow(QMainWindow):
         self.sp_sigma = self._spin(0.0, 5.0, 0.5, J.DEFAULTS['loop_sigma'], ' mm', 1,
                                    'Smoothing of the cut line and the wall below it. 0 follows the scan exactly (the wall looks rippled). '
                                    'Only a narrow strip along the cut edge is blended; gingiva above it and the teeth are not modified.')
-        self.sp_thick = self._spin(0.5, 20.0, 0.5, J.DEFAULTS['thickness'], ' mm', 1,
+        self.sp_thick = self._spin(0.1, 20.0, 0.1, J.DEFAULTS['thickness'], ' mm', 2,
                                    'Thickness of the flat base under the lowest point of the model.')
         self._setting(v2, 'Gingiva margin height', self.sp_offset,
                       'How much gum to keep around the teeth, measured along the surface. The base starts at this line. '
@@ -209,7 +209,7 @@ class MainWindow(QMainWindow):
                       'Smooths the cut line and the wall below it. 0 = follow the scan exactly (rippled wall); higher = smoother. '
                       'Gum near the teeth and the teeth themselves stay exactly as scanned. Typical: 1–3 mm.')
         self._setting(v2, 'Base thickness', self.sp_thick,
-                      'Thickness of the flat base under the lowest point of the model. Typical: 0.5–5 mm.')
+                      'Thickness of the flat base under the lowest point of the model. Typical: 0.3–5 mm; as thin as 0.1 mm works.')
         sep = QFrame(); sep.setObjectName('separator'); v2.addWidget(sep)
         self.chk_pair = QCheckBox('Upper and lower belong together (articulated pair)')
         self.chk_pair.setToolTip('Needs one scan set to "Upper jaw" and one to "Lower jaw". Both bases are made parallel to the shared '

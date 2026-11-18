@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 
 from .stl_io import output_path
 
-DEFAULTS = dict(offset=4.5, smooth=6.0, loop_sigma=1.5, thickness=0.5, strip=0.0, follow_tips=False)   # strip 0 = automatic
+DEFAULTS = dict(offset=4.5, smooth=6.0, loop_sigma=2.0, thickness=0.5, strip=0.0, follow_tips=False)   # strip 0 = automatic
 
 
 @dataclass

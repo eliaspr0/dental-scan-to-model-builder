@@ -108,8 +108,8 @@ These are checked automatically after every export, by reloading the file that w
 | Setting (GUI) | Command line | Default | What it does |
 |---|---|---|---|
 | Gingiva margin height | `--offset` | 4.5 mm | How much gum to keep around the teeth (distance along the surface). The base starts at this line. |
-| Trimline smoothing | `--loop-sigma` | 1.5 mm | Smooths the cut line and the wall below it. 0 = follow the scan exactly (rippled wall). |
-| Base thickness | `--thickness` | 0.5 mm | Thickness of the flat base under the lowest point of the model. |
+| Trimline smoothing | `--loop-sigma` | 2 mm | Smooths the cut line and the wall below it. 0 = follow the scan exactly (rippled wall). |
+| Base thickness | `--thickness` | 0.5 mm | Thickness of the flat base under the lowest point of the model (0.1 mm and up). |
 | Articulated pair | `--pair` | off | Process an upper and lower scan together so both bases are parallel to the shared bite plane. |
 | Base follows the tooth tips | `--follow-tips` | off | Tilts the flat bottom (up to 10°) so it runs parallel to the incisal edges and cusp tips instead of the estimated bite plane. In a pair, each jaw follows its own tips. If the tip plane is more than 10° away, the normal plane is used. |
 | Blend width (Advanced) | `--strip` | auto | Width of the strip along the cut edge where the scan follows the smoothed line. |
@@ -149,7 +149,7 @@ python verify.py upper_model.stl
 |---|---|---|
 | `--offset` | 4.5 | gingiva margin height in mm (several values allowed in batch mode) |
 | `--smooth` | 6.0 | advanced: smoothing of the trim field before the cut; barely changes the wall |
-| `--loop-sigma` | 1.5 | trimline smoothing in mm (3D outline and height); the wall is extruded straight down from it |
+| `--loop-sigma` | 2 | trimline smoothing in mm (3D outline and height); the wall is extruded straight down from it |
 | `--strip` | auto | advanced: blend width of the fade strip along the cut edge (≈1 mm where the edge moves noticeably, narrower where it barely moves) |
 | `--thickness` | 0.5 | base thickness below the lowest scan point, mm |
 | `--follow-tips` | off | base parallel to the tooth tips (limit 10°) |

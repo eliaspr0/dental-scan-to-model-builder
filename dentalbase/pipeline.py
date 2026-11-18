@@ -189,7 +189,7 @@ CLOSED_MSG = ('this file has no open edge: it is already a closed model (for exa
               'Please use the original raw scan.')
 
 
-def make_base(path_in, path_out, offset=4.5, smooth_t=6.0, loop_sigma=1.5, base_thickness=0.5,
+def make_base(path_in, path_out, offset=4.5, smooth_t=6.0, loop_sigma=2.0, base_thickness=0.5,
               border_keepout=2.5, protect_mm=None, up=None, trim_mode='base', strip=None, strip_min=1.0, verbose=True, return_all=False,
               follow_tips=False, max_tilt_deg=10.0):
     """up: optional occlusal normal (gingiva->crowns) in the scan's own coordinates, e.g. a shared bite-plane normal

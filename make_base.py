@@ -29,7 +29,7 @@ def main():
     ap.add_argument('--outdir', help='batch mode: write <name>_base_o<offset>.stl here')
     ap.add_argument('--offset', type=float, nargs='+', default=[4.5], help='gingiva margin height in mm (geodesic offset from crowns); several values = several outputs (default 4.5)')
     ap.add_argument('--smooth', type=float, default=6.0, help='trimline field smoothing (default 6)')
-    ap.add_argument('--loop-sigma', type=float, default=1.5, help='smoothing of the base outline below the trimline, in mm (default 1.5); the scan surface is never modified in the default --trim-mode base')
+    ap.add_argument('--loop-sigma', type=float, default=2.0, help='smoothing of the base outline below the trimline, in mm (default 2); the scan surface is never modified in the default --trim-mode base')
     ap.add_argument('--thickness', type=float, default=0.5, help='base thickness below the lowest scan point in mm (default 0.5)')
     ap.add_argument('--trim-mode', choices=['base', 'deform'], default='base', help="base (default): scan surface untouched, only the base outline is smoothed; deform: legacy, also blends the smoothing into the surface within ~5 mm of the trimline")
     ap.add_argument('--strip', type=float, default=None, help='advanced: width in mm of the strip along the cut edge where the scan follows the smoothed trimline (default: automatic: 1 mm where the edge moves noticeably, narrower where it barely moves, wider only if needed)')
