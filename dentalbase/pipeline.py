@@ -198,6 +198,7 @@ def make_base(path_in, path_out, offset=4.5, smooth_t=6.0, loop_sigma=1.5, base_
     follow_tips: make the flat base parallel to the tooth tips (plane through the incisal edges / cusp tips of the crowns)
     instead of the estimated bite plane; ignored (with a note) if that plane differs by more than max_tilt_deg."""
     t0 = time.time()
+    dbase.clear_cache()                     # per-mesh caches only live for one job
     if protect_mm is None:
         protect_mm = min(1.0, 0.5 * offset)
     stage(1, verbose)

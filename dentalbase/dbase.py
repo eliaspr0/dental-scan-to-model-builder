@@ -17,21 +17,56 @@ def load_clean(path):
     return m
 
 
+import collections as _collections
+import hashlib as _hashlib
+
+_CACHE = _collections.OrderedDict()
+_CACHE_MAX = 2
+
+
+def _mesh_key(V, F):
+    h = _hashlib.blake2b(digest_size=16)
+    h.update(np.ascontiguousarray(V, dtype=np.float64).view(np.uint8))
+    h.update(np.ascontiguousarray(F, dtype=np.int64).view(np.uint8))
+    return h.digest()
+
+
+def _cached(V, F, name, build):
+    """Memoise an expensive per-mesh object (solver, factorization, matrix) for the exact same V and F. Results are the
+    same objects/numbers as building them again; only the repeated work is skipped. Keeps the last few entries."""
+    k = (_mesh_key(V, F), name)
+    if k in _CACHE:
+        _CACHE.move_to_end(k)
+        return _CACHE[k]
+    val = build()
+    _CACHE[k] = val
+    while len(_CACHE) > _CACHE_MAX:
+        _CACHE.popitem(last=False)
+    return val
+
+
+def clear_cache():
+    _CACHE.clear()
+
+
 def vertex_normals(m):
     return np.asarray(m.vertex_normals)
 
 
 def cot_laplacian(V, F):
-    L = -igl.cotmatrix(V, F)      # positive semi-definite
-    M = igl.massmatrix(V, F, igl.MASSMATRIX_TYPE_VORONOI)
-    return L.tocsc(), M.tocsc()
+    def build():
+        L = -igl.cotmatrix(V, F)      # positive semi-definite
+        M = igl.massmatrix(V, F, igl.MASSMATRIX_TYPE_VORONOI)
+        return L.tocsc(), M.tocsc()
+    L, M = _cached(V, F, 'cot', build)
+    return L.copy(), M.copy()
 
 
 def smooth_scalar(V, F, f, t):
     """Implicit heat-flow smoothing of a per-vertex scalar, diffusion time t (mm^2)."""
     L, M = cot_laplacian(V, F)
-    A = (M + t * L).tocsc()
-    lu = splu(A)
+
+    lu = splu((M + t * L).tocsc())          # (not cached: the factors are by far the largest objects)
     return lu.solve(M @ f)
 
 
@@ -235,13 +270,15 @@ from scipy.sparse.linalg import spsolve
 
 
 def mesh_adjacency(V, F, weights='len'):
-    he = np.vstack([F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]])
-    he = np.sort(he, axis=1)
-    he = np.unique(he, axis=0)
-    l = np.linalg.norm(V[he[:, 0]] - V[he[:, 1]], axis=1)
-    n = len(V)
-    A = sp.coo_matrix((l, (he[:, 0], he[:, 1])), shape=(n, n))
-    return (A + A.T).tocsr()
+    def build():
+        he = np.vstack([F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]])
+        he = np.sort(he, axis=1)
+        he = np.unique(he, axis=0)
+        l = np.linalg.norm(V[he[:, 0]] - V[he[:, 1]], axis=1)
+        n = len(V)
+        A = sp.coo_matrix((l, (he[:, 0], he[:, 1])), shape=(n, n))
+        return (A + A.T).tocsr()
+    return _cached(V, F, 'adj', build).copy()
 
 
 def boundary_vertices(F, n):
@@ -256,7 +293,7 @@ def boundary_vertices(F, n):
 def geodesic_from(V, F, src_mask):
     """Approximate geodesic distance (mm) from a vertex set (Dijkstra on edge graph + heat-method fallback)."""
     import potpourri3d as pp3d
-    solver = pp3d.MeshHeatMethodDistanceSolver(V, F)
+    solver = _cached(V, F, 'heat', lambda: pp3d.MeshHeatMethodDistanceSolver(V, F))
     return solver.compute_distance_multisource(np.where(src_mask)[0])
 
 
@@ -343,7 +380,7 @@ def chain_segments(segs):
 
 # ---------------------------------------------------------------- trimline field + cutting
 def vertex_areas(V, F):
-    return np.asarray(igl.massmatrix(V, F, igl.MASSMATRIX_TYPE_VORONOI).diagonal())
+    return _cached(V, F, 'areas', lambda: np.asarray(igl.massmatrix(V, F, igl.MASSMATRIX_TYPE_VORONOI).diagonal())).copy()
 
 
 def clean_tooth_mask(V, F, p, thresh=0.5, min_area=4.0):
@@ -528,6 +565,45 @@ def drop_nonmanifold_faces(F):
     return F[~bad_face], int(bad_face.sum())
 
 
+def _min_area_fan(P, existing, ids):
+    """Minimum-total-area triangulation of a small closed 3D polygon (O(n^3) DP). Diagonals that already exist as mesh edges are
+    forbidden (they would create a non-manifold edge). Returns (n-2, 3) local indices or None."""
+    n = len(P)
+    INF = 1e30
+    def ok(i, j):
+        if j == i + 1 or (i == 0 and j == n - 1):
+            return True
+        return tuple(sorted((int(ids[i]), int(ids[j])))) not in existing
+    def area(i, j, k):
+        return 0.5 * float(np.linalg.norm(np.cross(P[j] - P[i], P[k] - P[i])))
+    cost = np.full((n, n), INF); split = np.zeros((n, n), int)
+    for i in range(n - 1):
+        cost[i, i + 1] = 0.0
+    for span in range(2, n):
+        for i in range(0, n - span):
+            j = i + span
+            if not ok(i, j):
+                continue
+            best = INF; bk = -1
+            for k in range(i + 1, j):
+                c = cost[i, k] + cost[k, j]
+                if c >= INF:
+                    continue
+                c += area(i, k, j)
+                if c < best:
+                    best = c; bk = k
+            cost[i, j] = best; split[i, j] = bk
+    if cost[0, n - 1] >= INF:
+        return None
+    out = []; st = [(0, n - 1)]
+    while st:
+        i, j = st.pop()
+        if j - i < 2:
+            continue
+        k = split[i, j]; out.append((i, k, j)); st += [(i, k), (k, j)]
+    return np.array(out, int)
+
+
 def fill_small_holes(V, F, max_len_mm=60.0):
     """Close the holes inside a patch (every boundary loop except the longest = the trimline) with triangles that use only the
     loop's own vertices: no vertex is added or moved, so the scan around a hole is untouched. A hole is a tiny gap in the raw
@@ -557,7 +633,11 @@ def fill_small_holes(V, F, max_len_mm=60.0):
             Q = Q * np.array([1.0, -1.0])
         T = np.asarray(earcut.triangulate_float64(np.ascontiguousarray(Q, dtype=np.float64), np.array([n], dtype=np.uint32))).reshape(-1, 3)
         if len(T) != n - 2:
-            skipped += 1; continue
+            T = _min_area_fan(V[rev], existing, rev) if n <= 150 else None   # degenerate sliver loop: fall back to a 3D min-area triangulation
+            if T is None:
+                skipped += 1; continue
+            add.append(rev[T]); filled += 1; largest = max(largest, length)
+            continue
         t0_, t1_, t2_ = Q[T[:, 0]], Q[T[:, 1]], Q[T[:, 2]]
         sgn = (t1_[:, 0] - t0_[:, 0]) * (t2_[:, 1] - t0_[:, 1]) - (t2_[:, 0] - t0_[:, 0]) * (t1_[:, 1] - t0_[:, 1])
         T = np.where((sgn < 0)[:, None], T[:, ::-1], T)
