@@ -193,14 +193,14 @@ class MainWindow(QMainWindow):
 
         # ---- step 2: settings
         card2, v2 = self._card(2, 'Choose your settings', 'The defaults are a good starting point. Hover over a value for more detail.')
-        self.sp_offset = self._spin(0.5, 15.0, 0.1, J.DEFAULTS['offset'], ' mm', 1,
+        self.sp_offset = self._spin(0.5, 15.0, 0.1, J.APP_DEFAULTS['offset'], ' mm', 1,
                                     'Gingiva margin height: surface distance from the teeth to the trimline, where the base starts.')
-        self.sp_smooth = self._spin(0.0, 30.0, 1.0, J.DEFAULTS['smooth'], '', 1, '')   # advanced; not shown (CLI --smooth)
+        self.sp_smooth = self._spin(0.0, 30.0, 1.0, J.APP_DEFAULTS['smooth'], '', 1, '')   # advanced; not shown (CLI --smooth)
         self.sp_smooth.setVisible(False)
-        self.sp_sigma = self._spin(0.0, 5.0, 0.5, J.DEFAULTS['loop_sigma'], ' mm', 1,
+        self.sp_sigma = self._spin(0.0, 5.0, 0.5, J.APP_DEFAULTS['loop_sigma'], ' mm', 1,
                                    'Smoothing of the cut line and the wall below it. 0 follows the scan exactly (the wall looks rippled). '
                                    'Only a narrow strip along the cut edge is blended; gingiva above it and the teeth are not modified.')
-        self.sp_thick = self._spin(0.1, 20.0, 0.1, J.DEFAULTS['thickness'], ' mm', 2,
+        self.sp_thick = self._spin(0.1, 20.0, 0.1, J.APP_DEFAULTS['thickness'], ' mm', 2,
                                    'Thickness of the flat base under the lowest point of the model.')
         self._setting(v2, 'Gingiva margin height', self.sp_offset,
                       'How much gum to keep around the teeth, measured along the surface. The base starts at this line. '
@@ -208,9 +208,9 @@ class MainWindow(QMainWindow):
         self.chk_ling = QCheckBox('Different margin on the tongue / palate side')
         self.chk_ling.setToolTip('Off: the same margin all around the teeth. On: the setting above applies to the cheek / lip side (labial, '
                                  'buccal) and the box below to the tongue / palate side (lingual, palatal).')
-        self.sp_ling = self._spin(0.5, 15.0, 0.1, J.DEFAULTS['offset'], ' mm', 1,
+        self.sp_ling = self._spin(0.5, 15.0, 0.1, J.APP_DEFAULTS['lingual'], ' mm', 1,
                                   'Gingiva margin height on the tongue / palate side of the teeth.')
-        self.sp_ling.setEnabled(False)
+        self.chk_ling.setChecked(J.APP_DEFAULTS['lingual_on']); self.sp_ling.setEnabled(self.chk_ling.isChecked())
         self.chk_ling.toggled.connect(self.sp_ling.setEnabled)
         v2.addWidget(self.chk_ling)
         self._setting(v2, 'Lingual / palatal margin height', self.sp_ling,
@@ -234,6 +234,7 @@ class MainWindow(QMainWindow):
                                  'bite plane. In an articulated pair each jaw follows its own tips (the two bases are then no longer '
                                  'exactly parallel to each other). If that plane is more than 10 degrees away, the normal bite plane is used. '
                                  'Teeth and coordinates are never modified.')
+        self.chk_tips.setChecked(J.APP_DEFAULTS['follow_tips'])
         v2.addWidget(self.chk_tips)
         th = QLabel('Tilts only the flat bottom (up to 10°) so it runs parallel to the tops of the teeth.'); th.setObjectName('help'); th.setWordWrap(True)
         v2.addWidget(th)
@@ -242,7 +243,7 @@ class MainWindow(QMainWindow):
         self.btn_adv.setCheckable(True); self.btn_adv.toggled.connect(self._toggle_advanced)
         v2.addWidget(self.btn_adv, 0, Qt.AlignLeft)
         self.adv_box = QWidget(); av = QVBoxLayout(self.adv_box); av.setContentsMargins(0, 0, 0, 0); av.setSpacing(6)
-        self.sp_strip = self._spin(0.0, 5.0, 0.5, J.DEFAULTS['strip'], ' mm', 1,
+        self.sp_strip = self._spin(0.0, 5.0, 0.5, J.APP_DEFAULTS['strip'], ' mm', 1,
                                    'Width of the strip along the cut edge where the scan follows the smoothed trimline. Auto = 1 mm, narrower where the line barely moves.')
         self.sp_strip.setSpecialValueText('Auto')
         self._setting(av, 'Blend width', self.sp_strip,
@@ -294,10 +295,10 @@ class MainWindow(QMainWindow):
                          self.sp_ling.value() if self.chk_ling.isChecked() else 0.0)
 
     def _reset_defaults(self):
-        self.sp_offset.setValue(J.DEFAULTS['offset']); self.sp_smooth.setValue(J.DEFAULTS['smooth'])
-        self.sp_sigma.setValue(J.DEFAULTS['loop_sigma']); self.sp_thick.setValue(J.DEFAULTS['thickness'])
-        self.sp_strip.setValue(J.DEFAULTS['strip']); self.chk_tips.setChecked(J.DEFAULTS['follow_tips'])
-        self.chk_ling.setChecked(False); self.sp_ling.setValue(J.DEFAULTS['offset'])
+        self.sp_offset.setValue(J.APP_DEFAULTS['offset']); self.sp_smooth.setValue(J.APP_DEFAULTS['smooth'])
+        self.sp_sigma.setValue(J.APP_DEFAULTS['loop_sigma']); self.sp_thick.setValue(J.APP_DEFAULTS['thickness'])
+        self.sp_strip.setValue(J.APP_DEFAULTS['strip']); self.chk_tips.setChecked(J.APP_DEFAULTS['follow_tips'])
+        self.chk_ling.setChecked(J.APP_DEFAULTS['lingual_on']); self.sp_ling.setValue(J.APP_DEFAULTS['lingual'])
 
     def _toggle_advanced(self, on):
         self.adv_box.setVisible(on); self.btn_adv.setText('Advanced ▾' if on else 'Advanced ▸')
