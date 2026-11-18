@@ -25,3 +25,12 @@ def test_hole_fill_avoids_existing_chord():
     chords = {tuple(sorted((int(vid[a]), int(vid[b])))) for t in T2 for a, b in ((t[0], t[1]), (t[1], t[2]), (t[2], t[0]))
               if (a - b) % 4 not in (1, 3)}
     assert not (chords & existing) and len(T2) == 2
+
+
+def test_closed_input_gives_a_clear_error(tmp_path):
+    import trimesh, pytest
+    from dentalbase.pipeline import make_base, ScanError
+    p = tmp_path / 'closed.stl'
+    trimesh.creation.icosphere(subdivisions=3, radius=20).export(str(p))
+    with pytest.raises(ScanError, match='no open edge'):
+        make_base(str(p), str(tmp_path / 'out.stl'), verbose=False)

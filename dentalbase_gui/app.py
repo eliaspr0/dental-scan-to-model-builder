@@ -125,6 +125,7 @@ class MainWindow(QMainWindow):
         self._queue, self._current, self._buf, self._reports = [], None, '', []
         self._total_jobs = self._done_jobs = 0
         self._cancelled = False
+        self._last_error = ''
         self._last_dir = None
         self._summaries = []
         self._pair_was_possible = False
@@ -432,7 +433,7 @@ class MainWindow(QMainWindow):
     def _start_next(self):
         if self._cancelled or not self._queue:
             return self._finish()
-        job = self._queue.pop(0); self._current = job; self._reports = []; self._buf = ''
+        job = self._queue.pop(0); self._current = job; self._reports = []; self._buf = ''; self._last_error = ''
         for p in job.inputs:
             self._set_status(p, 'Running…', 'running')
         self.statusBar().showMessage(f'Processing: {job.label}')
@@ -463,6 +464,8 @@ class MainWindow(QMainWindow):
             if st is not None:
                 self.dialog.on_stage(*st)
                 continue
+            if ln.startswith('ERROR: '):
+                self._last_error = ln[7:]
             rep = J.parse_report(ln)
             if rep is not None:
                 self._reports.append(rep)
@@ -480,7 +483,7 @@ class MainWindow(QMainWindow):
         if self._cancelled:
             return self._job_done(ok=False, reason='cancelled')
         if code != 0 or status != QProcess.NormalExit:
-            return self._job_done(ok=False, reason=f'backend failed (exit code {code}); see log')
+            return self._job_done(ok=False, reason=self._last_error or f'backend failed (exit code {code}); see log')
         self._job_done(ok=True)
 
     def _job_done(self, ok, reason=''):

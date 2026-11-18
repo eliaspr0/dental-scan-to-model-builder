@@ -22,7 +22,11 @@ if __name__ == '__main__':
             if getattr(sys, name) is None:
                 setattr(sys, name, open(os.devnull, 'w'))
         import make_base
-        make_base.main()      # (make_base.main switches stdout/stderr to UTF-8 itself)
+        try:
+            make_base.main()      # (make_base.main switches stdout/stderr to UTF-8 itself)
+        except make_base.ScanError as e:
+            print(f'ERROR: {e}', flush=True)
+            sys.exit(2)
     elif len(sys.argv) > 1 and sys.argv[1] == '--selftest':
         _selftest()
     else:

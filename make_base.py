@@ -9,7 +9,7 @@ Examples:
 """
 import argparse, json, os, sys, glob
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from dentalbase.pipeline import make_base, make_pair
+from dentalbase.pipeline import make_base, make_pair, ScanError
 
 
 def _utf8_streams():
@@ -89,4 +89,8 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except ScanError as e:
+        print(f'ERROR: {e}', flush=True)
+        sys.exit(2)
