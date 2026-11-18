@@ -12,7 +12,7 @@ from .stl_io import output_path
 DEFAULTS = dict(offset=4.5, smooth=6.0, loop_sigma=2.0, thickness=0.5, strip=0.0, follow_tips=False, lingual=0.0)   # strip 0 = automatic
 
 # What the app shows when it opens (and after "Reset to defaults"). The engine/CLI defaults above stay neutral.
-APP_DEFAULTS = dict(DEFAULTS, strip=0.5, follow_tips=True, lingual=6.0, lingual_on=True)
+APP_DEFAULTS = dict(DEFAULTS, thickness=0.1, strip=0.5, follow_tips=True, lingual=6.0, lingual_on=True)
 
 
 @dataclass
