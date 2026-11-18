@@ -260,4 +260,13 @@ separate process (so a job can be cancelled) and reads its output. Either side c
 
 ---
 
-<p align="center"><sub>Licence: not chosen yet.</sub></p>
+## Licence
+
+Free for **noncommercial use** under the [PolyForm Noncommercial License 1.0.0](LICENSE). Personal, research, educational and
+non-profit use is welcome. Commercial use (selling it or using it in a paid product or service) needs separate permission:
+please contact the author.
+
+The graded base is built with [Triangle](https://www.cs.cmu.edu/~quake/triangle.html), which itself restricts commercial use.
+Other libraries and their licences are listed in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+
+<p align="center"><sub>© 2026 Elias Prountzos</sub></p>
