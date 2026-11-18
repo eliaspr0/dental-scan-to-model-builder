@@ -401,13 +401,51 @@ def clean_tooth_mask(V, F, p, thresh=0.5, min_area=4.0):
     return mask
 
 
+def arch_side(V, tooth_mask, bins=72, width_mm=1.5):
+    """Per-vertex side of the arch in the working frame (Z = occlusal normal): +1 outside the tooth row (labial / buccal),
+    -1 inside it (lingual / palatal), blended smoothly over ~width_mm across the row. The row's centre line is the mean tooth
+    position in each angular bin around the arch centre; a vertex takes the side of its nearest centre-line point, measured along
+    that point's outward normal (so it also works at the open end of the horseshoe)."""
+    T = V[tooth_mask][:, :2]
+    c = T.mean(0)
+    ang = np.arctan2(T[:, 1] - c[1], T[:, 0] - c[0])
+    b = ((ang + np.pi) / (2 * np.pi) * bins).astype(int) % bins
+    P = np.full((bins, 2), np.nan)
+    for k in range(bins):
+        sel = T[b == k]
+        if len(sel) >= 20:
+            P[k] = sel.mean(0)
+    good = ~np.isnan(P[:, 0])
+    if good.sum() < 3:
+        return np.ones(len(V))
+    ids = np.where(good)[0]
+    Q = P[ids]
+    # tangent from neighbours along the row (open arch: do not wrap across the biggest angular gap)
+    gaps = np.diff(np.r_[ids, ids[0] + bins])
+    cut = int(np.argmax(gaps)); order = np.r_[np.arange(cut + 1, len(ids)), np.arange(0, cut + 1)]
+    Q = Q[order]
+    tang = np.gradient(Q, axis=0)
+    tang /= np.maximum(np.linalg.norm(tang, axis=1, keepdims=True), 1e-9)
+    nrm = np.c_[tang[:, 1], -tang[:, 0]]
+    flip = ((Q - c) * nrm).sum(1) < 0
+    nrm[flip] *= -1                                    # outward normal
+    # densify the centre line so "nearest point" is smooth
+    t = np.arange(len(Q)); tt = np.linspace(0, len(Q) - 1, 8 * len(Q))
+    Qd = np.c_[np.interp(tt, t, Q[:, 0]), np.interp(tt, t, Q[:, 1])]
+    Nd = np.c_[np.interp(tt, t, nrm[:, 0]), np.interp(tt, t, nrm[:, 1])]
+    Nd /= np.maximum(np.linalg.norm(Nd, axis=1, keepdims=True), 1e-9)
+    from scipy.spatial import cKDTree
+    _, j = cKDTree(Qd).query(V[:, :2])
+    return np.tanh(((V[:, :2] - Qd[j]) * Nd[j]).sum(1) / width_mm)
+
+
 def trim_field(V, F, tooth_mask, bv_mask, offset, border_keepout=2.5, smooth_t=3.0, border_smooth_t=6.0, final_t=0.5, protect_mm=None):
     """Scalar g (mm): g<0 inside the kept region = within `offset` of the teeth (geodesic) and >= keepout from scan border.
     The offset field and the keep-out field are smoothed separately, then combined (smoothing the max() lets the
     border term leak across the scan edge)."""
     d_tooth = geodesic_from(V, F, tooth_mask)
     d_border = geodesic_from(V, F, bv_mask)
-    g_off = d_tooth - offset
+    g_off = d_tooth - offset            # offset: one number, or one value per vertex (different labial / lingual margin)
     if smooth_t > 0:
         g_off = smooth_scalar(V, F, g_off, smooth_t)
     db = smooth_scalar(V, F, d_border, border_smooth_t) if border_smooth_t > 0 else d_border

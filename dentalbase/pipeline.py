@@ -191,7 +191,7 @@ CLOSED_MSG = ('this file has no open edge: it is already a closed model (for exa
 
 def make_base(path_in, path_out, offset=4.5, smooth_t=6.0, loop_sigma=2.0, base_thickness=0.5,
               border_keepout=2.5, protect_mm=None, up=None, trim_mode='base', strip=None, strip_min=1.0, verbose=True, return_all=False,
-              follow_tips=False, max_tilt_deg=10.0):
+              follow_tips=False, max_tilt_deg=10.0, offset_lingual=None):
     """up: optional occlusal normal (gingiva->crowns) in the scan's own coordinates, e.g. a shared bite-plane normal
     for an upper/lower pair. protect_mm: crowns + this ring are guaranteed untouched (default min(1, offset/2));
     pass a negative value to disable (for A/B testing only).
@@ -200,7 +200,7 @@ def make_base(path_in, path_out, offset=4.5, smooth_t=6.0, loop_sigma=2.0, base_
     t0 = time.time()
     dbase.clear_cache()                     # per-mesh caches only live for one job
     if protect_mm is None:
-        protect_mm = min(1.0, 0.5 * offset)
+        protect_mm = min(1.0, 0.5 * (offset if offset_lingual is None else min(offset, offset_lingual)))
     stage(1, verbose)
     m = dbase.load_clean(path_in)
     V0 = np.asarray(m.vertices, float); F = np.asarray(m.faces)      # ORIGINAL coordinates: never modified
@@ -238,7 +238,12 @@ def make_base(path_in, path_out, offset=4.5, smooth_t=6.0, loop_sigma=2.0, base_
                 log(t0, f"base follows the tooth tips: tilted {tilt_deg:.1f} deg from the bite plane ({tinfo['tips']}/{tinfo['tips_total']} arch slices, fit rms {tinfo['rms_mm']:.2f} mm)")
     pm = protect_mm if protect_mm >= 0 else None
     stage(4, verbose)
-    g, d_tooth, d_border, nbridge = bridged_trim_field(V, F, mask, bv, offset, border_keepout, smooth_t, t0=t0, protect_mm=pm)
+    offset_field = offset
+    if offset_lingual is not None and abs(offset_lingual - offset) > 1e-9:
+        side = dbase.arch_side(V, mask)                      # +1 labial/buccal ... -1 lingual/palatal
+        offset_field = offset * (1 + side) / 2 + offset_lingual * (1 - side) / 2
+        log(t0, f'margin height: {offset:g} mm labial / buccal, {offset_lingual:g} mm lingual / palatal')
+    g, d_tooth, d_border, nbridge = bridged_trim_field(V, F, mask, bv, offset_field, border_keepout, smooth_t, t0=t0, protect_mm=pm)
     V2, F2, oid = dbase.cut_mesh(V, F, g)
     V2, F2, oid = keep_largest_component(V2, F2, oid)
     F2, dropped = dbase.drop_nonmanifold_faces(F2)

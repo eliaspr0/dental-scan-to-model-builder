@@ -109,6 +109,7 @@ These are checked automatically after every export, by reloading the file that w
 |---|---|---|---|
 | Gingiva margin height | `--offset` | 4.5 mm | How much gum to keep around the teeth (distance along the surface). The base starts at this line. |
 | Trimline smoothing | `--loop-sigma` | 2 mm | Smooths the cut line and the wall below it. 0 = follow the scan exactly (rippled wall). |
+| Margin on the tongue / palate side | `--offset-lingual` | same as margin height | Optional. When set, `--offset` applies to the lip / cheek side only and this value to the tongue / palate side. |
 | Base thickness | `--thickness` | 0.5 mm | Thickness of the flat base under the lowest point of the model (0.1 mm and up). |
 | Articulated pair | `--pair` | off | Process an upper and lower scan together so both bases are parallel to the shared bite plane. |
 | Base follows the tooth tips | `--follow-tips` | off | Tilts the flat bottom (up to 10°) so it runs parallel to the incisal edges and cusp tips instead of the estimated bite plane. In a pair, each jaw follows its own tips. If the tip plane is more than 10° away, the normal plane is used. |

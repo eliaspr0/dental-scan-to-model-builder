@@ -205,6 +205,16 @@ class MainWindow(QMainWindow):
         self._setting(v2, 'Gingiva margin height', self.sp_offset,
                       'How much gum to keep around the teeth, measured along the surface. The base starts at this line. '
                       'Larger = more gum. Typical: 3–6 mm.')
+        self.chk_ling = QCheckBox('Different margin on the tongue / palate side')
+        self.chk_ling.setToolTip('Off: the same margin all around the teeth. On: the setting above applies to the cheek / lip side (labial, '
+                                 'buccal) and the box below to the tongue / palate side (lingual, palatal).')
+        self.sp_ling = self._spin(0.5, 15.0, 0.1, J.DEFAULTS['offset'], ' mm', 1,
+                                  'Gingiva margin height on the tongue / palate side of the teeth.')
+        self.sp_ling.setEnabled(False)
+        self.chk_ling.toggled.connect(self.sp_ling.setEnabled)
+        v2.addWidget(self.chk_ling)
+        self._setting(v2, 'Lingual / palatal margin height', self.sp_ling,
+                      'Gum kept on the tongue / palate side, measured along the surface. The setting above then applies to the lip / cheek side only.')
         self._setting(v2, 'Trimline smoothing', self.sp_sigma,
                       'Smooths the cut line and the wall below it. 0 = follow the scan exactly (rippled wall); higher = smoother. '
                       'Gum near the teeth and the teeth themselves stay exactly as scanned. Typical: 1–3 mm.')
@@ -280,12 +290,14 @@ class MainWindow(QMainWindow):
         s.setSuffix(suffix); s.setToolTip(tip); s.setAlignment(Qt.AlignRight); s.setButtonSymbols(QDoubleSpinBox.PlusMinus); return s
 
     def options(self):
-        return J.Options(self.sp_offset.value(), self.sp_smooth.value(), self.sp_sigma.value(), self.sp_thick.value(), self.sp_strip.value(), self.chk_tips.isChecked())
+        return J.Options(self.sp_offset.value(), self.sp_smooth.value(), self.sp_sigma.value(), self.sp_thick.value(), self.sp_strip.value(), self.chk_tips.isChecked(),
+                         self.sp_ling.value() if self.chk_ling.isChecked() else 0.0)
 
     def _reset_defaults(self):
         self.sp_offset.setValue(J.DEFAULTS['offset']); self.sp_smooth.setValue(J.DEFAULTS['smooth'])
         self.sp_sigma.setValue(J.DEFAULTS['loop_sigma']); self.sp_thick.setValue(J.DEFAULTS['thickness'])
         self.sp_strip.setValue(J.DEFAULTS['strip']); self.chk_tips.setChecked(J.DEFAULTS['follow_tips'])
+        self.chk_ling.setChecked(False); self.sp_ling.setValue(J.DEFAULTS['offset'])
 
     def _toggle_advanced(self, on):
         self.adv_box.setVisible(on); self.btn_adv.setText('Advanced ▾' if on else 'Advanced ▸')
@@ -376,7 +388,7 @@ class MainWindow(QMainWindow):
     def _set_running(self, running):
         self._running = running
         for w in (self.btn_add, self.btn_remove, self.btn_clear, self.btn_reset, self.sp_offset, self.sp_smooth,
-                  self.sp_sigma, self.sp_thick, self.sp_strip, self.chk_tips, self.btn_adv, self.table.horizontalHeader()):
+                  self.sp_sigma, self.sp_thick, self.sp_strip, self.chk_tips, self.chk_ling, self.sp_ling, self.btn_adv, self.table.horizontalHeader()):
             w.setEnabled(not running)
         self.table.setAcceptDrops(not running)
         for r in range(self.table.rowCount()):

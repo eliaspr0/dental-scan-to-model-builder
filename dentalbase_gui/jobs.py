@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 
 from .stl_io import output_path
 
-DEFAULTS = dict(offset=4.5, smooth=6.0, loop_sigma=2.0, thickness=0.5, strip=0.0, follow_tips=False)   # strip 0 = automatic
+DEFAULTS = dict(offset=4.5, smooth=6.0, loop_sigma=2.0, thickness=0.5, strip=0.0, follow_tips=False, lingual=0.0)   # strip 0 = automatic
 
 
 @dataclass
@@ -20,6 +20,7 @@ class Options:
     thickness: float = DEFAULTS['thickness']    # base thickness (mm)
     strip: float = DEFAULTS['strip']            # blend width along the cut edge (mm); 0 = automatic
     follow_tips: bool = DEFAULTS['follow_tips'] # base parallel to the tooth tips instead of the bite plane
+    lingual: float = DEFAULTS['lingual']        # lingual / palatal margin height (mm); 0 = same as the labial margin
 
 
 @dataclass
@@ -60,6 +61,8 @@ def build_args(job, opts, script, python=None):
               '--loop-sigma', f'{opts.loop_sigma:g}', '--thickness', f'{opts.thickness:g}']
     if opts.strip > 0:
         common += ['--strip', f'{opts.strip:g}']
+    if opts.lingual > 0:
+        common += ['--offset-lingual', f'{opts.lingual:g}']
     if opts.follow_tips:
         common += ['--follow-tips']
     if job.kind == 'pair':
