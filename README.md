@@ -17,7 +17,7 @@ Pure geometry. **No machine learning, no GPU, no downloads of model weights.** R
 
 ## Contents
 
-[What it does](#what-it-does) · [Get the app](#get-the-app) · [How to use it](#how-to-use-it) · [What you get](#what-you-get) · [Our promises](#our-promises) · [Settings](#settings) · [Command line](#command-line) · [How it works](#how-it-works) · [Limitations](#known-limitations) · [Build it yourself](#build-it-yourself) · [Repository map](#repository-map)
+[What it does](#what-it-does) · [Get the app](#get-the-app) · [How to use it](#how-to-use-it) · [What you get](#what-you-get) · [Our promises](#our-promises) · [Settings](#settings) · [Command line](#command-line) · [How it works](#how-it-works) · [Limitations](#known-limitations) · [Important notice](#important-notice) · [Build it yourself](#build-it-yourself) · [Repository map](#repository-map)
 
 ---
 
@@ -199,6 +199,22 @@ Please read before relying on it.
 - **Validated on a limited number of scans.** The margin line has not been measured against hand-labelled ground truth, so check every result before printing.
 - **The flat base sits below the lowest scan point**, so arches with tall back ends get tall back blocks. *Base follows the tooth tips* can help when the bottom looks tilted.
 - Optional self-intersection check: `pip install pymeshlab` (Linux also needs `apt install libopengl0`); `verify.py` uses it when present.
+
+---
+
+## Important notice
+
+**Not a medical device.** This is a geometry tool. It has not been cleared or approved by any regulator and comes with no warranty
+(see the [licence](LICENSE)). It does not make clinical decisions. You are responsible for checking every model, against the
+original scan and for its intended use, before it is printed or used on a patient.
+
+**Patient privacy.** Scans can identify a person. The app runs entirely on your own computer and sends nothing anywhere.
+**Never upload real patient scans, or screenshots that show them, to this repository.** That includes issues, discussions and
+pull requests. If you report a problem, use an anonymised or non-patient scan, or describe the problem in words.
+
+**Unsigned apps.** The downloadable apps are not code-signed or notarised yet, so macOS and Windows warn you on first launch
+(see [Get the app](#get-the-app)). To avoid downloading anything unsigned, build the app yourself
+([Build it yourself](#build-it-yourself)) or run it from source.
 
 ---
 
