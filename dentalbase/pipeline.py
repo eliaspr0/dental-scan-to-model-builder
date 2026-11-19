@@ -191,7 +191,7 @@ CLOSED_MSG = ('this file has no open edge: it is already a closed model (for exa
 
 def make_base(path_in, path_out, offset=4.5, smooth_t=6.0, loop_sigma=2.0, base_thickness=0.5,
               border_keepout=2.5, protect_mm=None, up=None, trim_mode='base', strip=None, strip_min=1.0, verbose=True, return_all=False,
-              follow_tips=False, max_tilt_deg=10.0, offset_lingual=None):
+              follow_tips=False, max_tilt_deg=10.0, offset_lingual=None, follow_gum=False, max_gum_tilt_deg=30.0):
     """up: optional occlusal normal (gingiva->crowns) in the scan's own coordinates, e.g. a shared bite-plane normal
     for an upper/lower pair. protect_mm: crowns + this ring are guaranteed untouched (default min(1, offset/2));
     pass a negative value to disable (for A/B testing only).
@@ -244,6 +244,23 @@ def make_base(path_in, path_out, offset=4.5, smooth_t=6.0, loop_sigma=2.0, base_
         offset_field = offset * (1 + side) / 2 + offset_lingual * (1 - side) / 2
         log(t0, f'margin height: {offset:g} mm labial / buccal, {offset_lingual:g} mm lingual / palatal')
     g, d_tooth, d_border, nbridge = bridged_trim_field(V, F, mask, bv, offset_field, border_keepout, smooth_t, t0=t0, protect_mm=pm)
+    if follow_gum and not follow_tips:
+        # the cut line does not depend on the base direction: cut once in the bite frame, fit a plane to the trimline, tilt the frame to it
+        Vg, Fg, _ = dbase.cut_mesh(V, F, g)
+        Vg, Fg, _ = keep_largest_component(Vg, Fg, np.arange(len(Vg)))
+        ng, ginfo = dbase.gum_plane_normal(Vg, Fg)
+        if ng is None:
+            log(t0, f'base follows the bite plane (gum line unavailable: {ginfo})')
+        else:
+            tilt_deg = float(np.degrees(np.arccos(np.clip(ng[2], -1, 1))))
+            if tilt_deg > max_gum_tilt_deg:
+                log(t0, f'base follows the bite plane (gum-line plane is {tilt_deg:.1f} deg away, limit {max_gum_tilt_deg:g} deg)')
+                tilt_deg = 0.0
+            else:
+                R2 = dbase.tilt_rotation(ng)
+                V = V @ R2.T
+                R = R2 @ R
+                log(t0, f"base follows the gum line: tilted {tilt_deg:.1f} deg from the bite plane (trimline height spread {ginfo['spread_mm']:.1f} mm, fit rms {ginfo['rms_mm']:.2f} mm)")
     V2, F2, oid = dbase.cut_mesh(V, F, g)
     V2, F2, oid = keep_largest_component(V2, F2, oid)
     F2, dropped = dbase.drop_nonmanifold_faces(F2)

@@ -12,7 +12,7 @@ from .stl_io import output_path
 DEFAULTS = dict(offset=4.5, smooth=6.0, loop_sigma=2.0, thickness=0.5, strip=0.0, follow_tips=False, lingual=0.0)   # strip 0 = automatic
 
 # What the app shows when it opens (and after "Reset to defaults"). The engine/CLI defaults above stay neutral.
-APP_DEFAULTS = dict(DEFAULTS, thickness=0.1, strip=0.5, follow_tips=True, lingual=6.0, lingual_on=True)
+APP_DEFAULTS = dict(DEFAULTS, thickness=0.1, strip=0.5, follow_tips=False, base_dir='gum', lingual=6.0, lingual_on=True)
 
 
 @dataclass
@@ -24,6 +24,7 @@ class Options:
     strip: float = DEFAULTS['strip']            # blend width along the cut edge (mm); 0 = automatic
     follow_tips: bool = DEFAULTS['follow_tips'] # base parallel to the tooth tips instead of the bite plane
     lingual: float = DEFAULTS['lingual']        # lingual / palatal margin height (mm); 0 = same as the labial margin
+    follow_gum: bool = False                    # base parallel to the gum line (trimline plane): most even wall + base height
 
 
 @dataclass
@@ -68,6 +69,8 @@ def build_args(job, opts, script, python=None):
         common += ['--offset-lingual', f'{opts.lingual:g}']
     if opts.follow_tips:
         common += ['--follow-tips']
+    elif opts.follow_gum:
+        common += ['--follow-gum']
     if job.kind == 'pair':
         return head + ['--pair', job.inputs[0], job.inputs[1], '--pair-out', job.outputs[0], job.outputs[1]] + common
     return head + [job.inputs[0], job.outputs[0]] + common

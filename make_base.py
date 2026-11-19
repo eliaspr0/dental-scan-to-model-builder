@@ -28,6 +28,7 @@ def main():
     ap.add_argument('inputs', nargs='*', help='input STL (then output STL), or several input STLs with --outdir')
     ap.add_argument('--outdir', help='batch mode: write <name>_base_o<offset>.stl here')
     ap.add_argument('--offset', type=float, nargs='+', default=[4.5], help='gingiva margin height in mm (geodesic offset from crowns); several values = several outputs (default 4.5)')
+    ap.add_argument('--follow-gum', action='store_true', help='make the flat base parallel to the gum line (the trimline) so wall + base height is as even as possible (up to 30 degrees)')
     ap.add_argument('--offset-lingual', type=float, default=None, help='gingiva margin height on the lingual / palatal side in mm (default: same as --offset, which is then the labial / buccal margin)')
     ap.add_argument('--smooth', type=float, default=6.0, help='trimline field smoothing (default 6)')
     ap.add_argument('--loop-sigma', type=float, default=2.0, help='smoothing of the base outline below the trimline, in mm (default 2); the scan surface is never modified in the default --trim-mode base')
@@ -55,7 +56,7 @@ def main():
                 uo = os.path.join(a.outdir, f"{os.path.splitext(os.path.basename(up))[0]}_base_o{off:g}.stl")
                 lo_o = os.path.join(a.outdir, f"{os.path.splitext(os.path.basename(lo))[0]}_base_o{off:g}.stl")
             print(f'\n=== pair (offset {off:g} mm): {up} + {lo}')
-            reps = make_pair(up, lo, uo, lo_o, offset=off, smooth_t=a.smooth, loop_sigma=a.loop_sigma, base_thickness=a.thickness, trim_mode=a.trim_mode, strip=a.strip, follow_tips=a.follow_tips, offset_lingual=a.offset_lingual)
+            reps = make_pair(up, lo, uo, lo_o, offset=off, smooth_t=a.smooth, loop_sigma=a.loop_sigma, base_thickness=a.thickness, trim_mode=a.trim_mode, strip=a.strip, follow_tips=a.follow_tips, offset_lingual=a.offset_lingual, follow_gum=a.follow_gum)
             for r, dst in zip(reps, (uo, lo_o)):
                 print(os.path.basename(dst), json.dumps({k: r[k] for k in ('watertight', 'euler', 'crown_exact_pct', 'crown_max_dev_mm', 'crown_area_kept_pct')}))
                 if not r['watertight'] or r['euler'] != 2:
@@ -78,7 +79,7 @@ def main():
 
     for src, dst, off in jobs:
         print(f'\n=== {src} -> {dst} (offset {off:g} mm)')
-        rep = make_base(src, dst, off, a.smooth, a.loop_sigma, a.thickness, trim_mode=a.trim_mode, strip=a.strip, follow_tips=a.follow_tips, offset_lingual=a.offset_lingual)
+        rep = make_base(src, dst, off, a.smooth, a.loop_sigma, a.thickness, trim_mode=a.trim_mode, strip=a.strip, follow_tips=a.follow_tips, offset_lingual=a.offset_lingual, follow_gum=a.follow_gum)
         print(json.dumps(rep))
         if not rep['watertight'] or rep['euler'] != 2:
             print('  WARNING: not a simple closed solid (watertight=%s, euler=%s). Euler != 2 means handles/tunnels, usually already in the raw scan. Run verify.py.' % (rep['watertight'], rep['euler']))

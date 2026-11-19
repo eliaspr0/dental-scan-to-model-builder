@@ -55,6 +55,11 @@ class T(unittest.TestCase):
         a = jobs.build_args(j, jobs.Options(strip=1.5), 'make_base.py', python='py')
         self.assertEqual(a[a.index('--strip') + 1], '1.5')
 
+    def test_follow_gum_option(self):
+        j = jobs.Job('single', ['a.stl'], ['a_output.stl'])
+        self.assertIn('--follow-gum', jobs.build_args(j, jobs.Options(follow_gum=True), 'make_base.py', python='py'))
+        self.assertNotIn('--follow-gum', jobs.build_args(j, jobs.Options(), 'make_base.py', python='py'))
+
     def test_follow_tips_option(self):
         j = jobs.Job('single', ['/a/u.stl'], ['/a/u_output.stl'])
         self.assertNotIn('--follow-tips', jobs.build_args(j, jobs.Options(), 'make_base.py', python='py'))

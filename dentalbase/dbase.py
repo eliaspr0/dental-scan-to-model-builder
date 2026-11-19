@@ -234,6 +234,29 @@ def tip_plane_normal(V, mask, n_bins=36, tip_pct=95.0, min_bins=10):
     return nrm, dict(tips=int(keep.sum()), tips_total=int(len(tips)), rms_mm=float(np.sqrt(np.mean(res[keep] ** 2))))
 
 
+def gum_plane_normal(V, F, n_samples=600):
+    """Normal (oriented like +Z) of the plane that best fits the trimline, the lower edge of the kept gum, so a flat base parallel
+    to it gives the most even wall height (wall + base) around the arch. V, F: the trimmed mesh (largest open boundary loop is used).
+    Returns (normal or None, info). Points are resampled by arc length so dense and sparse parts of the loop count equally; one
+    trimmed refit drops stray points (loop tails)."""
+    loops = boundary_loops(F)
+    if not loops:
+        return None, 'no open boundary'
+    P = V[max(loops, key=len)]
+    Q = np.vstack([P, P[:1]]); seg = np.linalg.norm(np.diff(Q, axis=0), axis=1)
+    cum = np.r_[0, np.cumsum(seg)]
+    u = np.linspace(0, cum[-1], n_samples, endpoint=False)
+    S = np.c_[[np.interp(u, cum, Q[:, k]) for k in range(3)]].T
+    keep = np.ones(len(S), bool)
+    for _ in range(2):
+        c = S[keep].mean(0); n = np.linalg.svd(S[keep] - c)[2][2]
+        r = (S - c) @ n
+        keep = np.abs(r) <= max(2.0 * np.sqrt(np.mean(r[keep] ** 2)), 0.3)
+    n = n if n[2] > 0 else -n
+    r = (S[keep] - S[keep].mean(0)) @ n
+    return n, dict(rms_mm=float(np.sqrt(np.mean(r ** 2))), spread_mm=float(np.ptp(r)), used=int(keep.sum()), total=int(len(S)))
+
+
 def tilt_rotation(n):
     """Rotation matrix R2 with R2 @ n = (0, 0, 1) (shortest rotation)."""
     n = np.asarray(n, float) / np.linalg.norm(n)

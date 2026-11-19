@@ -229,14 +229,20 @@ class MainWindow(QMainWindow):
         v2.addWidget(self.chk_pair)
         ph = QLabel('Makes the two bases parallel so the models sit flat and still bite together.'); ph.setObjectName('help'); ph.setWordWrap(True)
         v2.addWidget(ph)
-        self.chk_tips = QCheckBox('Base follows the tooth tips')
-        self.chk_tips.setToolTip('Makes the flat bottom parallel to a plane through the incisal edges and cusp tips instead of the estimated '
-                                 'bite plane. In an articulated pair each jaw follows its own tips (the two bases are then no longer '
-                                 'exactly parallel to each other). If that plane is more than 10 degrees away, the normal bite plane is used. '
-                                 'Teeth and coordinates are never modified.')
-        self.chk_tips.setChecked(J.APP_DEFAULTS['follow_tips'])
-        v2.addWidget(self.chk_tips)
-        th = QLabel('Tilts only the flat bottom (up to 10°) so it runs parallel to the tops of the teeth.'); th.setObjectName('help'); th.setWordWrap(True)
+        self._base_lbl = QLabel('Base direction'); self._base_lbl.setObjectName('settingName')
+        v2.addWidget(self._base_lbl)
+        self.cmb_base = QComboBox()
+        self.cmb_base.addItem('Bite plane', 'bite')
+        self.cmb_base.addItem('Tooth tips', 'tips')
+        self.cmb_base.addItem('Gum line (even wall height)', 'gum')
+        self.cmb_base.setToolTip('Which way the flat bottom faces. Bite plane: parallel to the estimated bite plane. Tooth tips: parallel to a '
+                                 'plane through the incisal edges and cusp tips (up to 10 degrees away). Gum line: parallel to the plane that '
+                                 'best fits the cut line, so wall plus base is as even as possible all around the arch (up to 30 degrees). '
+                                 'In an articulated pair each jaw follows its own tips / gum line, so the two bases are then no longer exactly '
+                                 'parallel. Teeth and coordinates are never modified.')
+        self.cmb_base.setCurrentIndex(self.cmb_base.findData(J.APP_DEFAULTS['base_dir']))
+        v2.addWidget(self.cmb_base)
+        th = QLabel('Tilts only the flat bottom. Gum line keeps the wall and base the same height around the arch.'); th.setObjectName('help'); th.setWordWrap(True)
         v2.addWidget(th)
         # advanced (collapsed by default): blend width
         self.btn_adv = QPushButton('Advanced ▸'); self.btn_adv.setObjectName('link'); self.btn_adv.setCursor(Qt.PointingHandCursor)
@@ -291,13 +297,13 @@ class MainWindow(QMainWindow):
         s.setSuffix(suffix); s.setToolTip(tip); s.setAlignment(Qt.AlignRight); s.setButtonSymbols(QDoubleSpinBox.PlusMinus); return s
 
     def options(self):
-        return J.Options(self.sp_offset.value(), self.sp_smooth.value(), self.sp_sigma.value(), self.sp_thick.value(), self.sp_strip.value(), self.chk_tips.isChecked(),
-                         self.sp_ling.value() if self.chk_ling.isChecked() else 0.0)
+        return J.Options(self.sp_offset.value(), self.sp_smooth.value(), self.sp_sigma.value(), self.sp_thick.value(), self.sp_strip.value(), self.cmb_base.currentData() == 'tips',
+                         self.sp_ling.value() if self.chk_ling.isChecked() else 0.0, self.cmb_base.currentData() == 'gum')
 
     def _reset_defaults(self):
         self.sp_offset.setValue(J.APP_DEFAULTS['offset']); self.sp_smooth.setValue(J.APP_DEFAULTS['smooth'])
         self.sp_sigma.setValue(J.APP_DEFAULTS['loop_sigma']); self.sp_thick.setValue(J.APP_DEFAULTS['thickness'])
-        self.sp_strip.setValue(J.APP_DEFAULTS['strip']); self.chk_tips.setChecked(J.APP_DEFAULTS['follow_tips'])
+        self.sp_strip.setValue(J.APP_DEFAULTS['strip']); self.cmb_base.setCurrentIndex(self.cmb_base.findData(J.APP_DEFAULTS['base_dir']))
         self.chk_ling.setChecked(J.APP_DEFAULTS['lingual_on']); self.sp_ling.setValue(J.APP_DEFAULTS['lingual'])
 
     def _toggle_advanced(self, on):
@@ -389,7 +395,7 @@ class MainWindow(QMainWindow):
     def _set_running(self, running):
         self._running = running
         for w in (self.btn_add, self.btn_remove, self.btn_clear, self.btn_reset, self.sp_offset, self.sp_smooth,
-                  self.sp_sigma, self.sp_thick, self.sp_strip, self.chk_tips, self.chk_ling, self.sp_ling, self.btn_adv, self.table.horizontalHeader()):
+                  self.sp_sigma, self.sp_thick, self.sp_strip, self.cmb_base, self.chk_ling, self.sp_ling, self.btn_adv, self.table.horizontalHeader()):
             w.setEnabled(not running)
         self.table.setAcceptDrops(not running)
         for r in range(self.table.rowCount()):
