@@ -11,6 +11,16 @@ Pure geometry. **No machine learning, no GPU, no downloads of model weights.** R
 
 </div>
 
+<p align="center">
+<a href="https://github.com/eliaspr0/dental-scan-to-model-builder/actions"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/eliaspr0/dental-scan-to-model-builder/build.yml?label=build"></a>
+<a href="https://github.com/eliaspr0/dental-scan-to-model-builder/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/eliaspr0/dental-scan-to-model-builder"></a>
+<a href="https://github.com/eliaspr0/dental-scan-to-model-builder/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/eliaspr0/dental-scan-to-model-builder/total"></a>
+<a href="LICENSE"><img alt="Licence" src="https://img.shields.io/badge/licence-PolyForm%20Noncommercial%201.0.0-blue"></a>
+<img alt="Python" src="https://img.shields.io/badge/python-3.11-blue">
+<img alt="Platforms" src="https://img.shields.io/badge/platforms-macOS%20%7C%20Windows-lightgrey">
+<img alt="Not a medical device" src="https://img.shields.io/badge/not%20a%20medical%20device-red">
+</p>
+
 <p align="center"><img src="docs/screenshot.png" alt="The Dental Scan to Model Builder window" width="760"></p>
 
 ---
