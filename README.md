@@ -44,13 +44,13 @@ meshes by hand.
 
 ## Get the app
 
-Download the zip for your computer from the **Releases** page of this repository (or from **Actions → Build apps → Artifacts**), unzip it and open it. No Python needed.
+Download the zip for your computer from the [**Releases** page](https://github.com/eliaspr0/dental-scan-to-model-builder/releases/latest), unzip it and open it. No Python needed.
 
 | Download | For |
 |---|---|
-| `DentalScanToModelBuilder-macOS-AppleSilicon.zip` | Macs with an M1 / M2 / M3 / M4 chip |
-| `DentalScanToModelBuilder-macOS-Intel.zip` | older Intel Macs |
-| `DentalScanToModelBuilder-Windows.zip` | Windows 10 / 11 (run `DentalScanToModelBuilder.exe`) |
+| [`DentalScanToModelBuilder-macOS-AppleSilicon.zip`](https://github.com/eliaspr0/dental-scan-to-model-builder/releases/latest/download/DentalScanToModelBuilder-macOS-AppleSilicon.zip) | Macs with an M1 / M2 / M3 / M4 chip |
+| [`DentalScanToModelBuilder-macOS-Intel.zip`](https://github.com/eliaspr0/dental-scan-to-model-builder/releases/latest/download/DentalScanToModelBuilder-macOS-Intel.zip) | older Intel Macs |
+| [`DentalScanToModelBuilder-Windows.zip`](https://github.com/eliaspr0/dental-scan-to-model-builder/releases/latest/download/DentalScanToModelBuilder-Windows.zip) | Windows 10 / 11 (run `DentalScanToModelBuilder.exe`) |
 
 > **First launch:** the app is not code-signed yet, so your system will ask once.
 > - **macOS:** right-click the app → **Open** → **Open**. (If it still refuses: *System Settings → Privacy & Security → Open Anyway*.)
