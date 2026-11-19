@@ -60,6 +60,21 @@ class T(unittest.TestCase):
         self.assertIn('--follow-gum', jobs.build_args(j, jobs.Options(follow_gum=True), 'make_base.py', python='py'))
         self.assertNotIn('--follow-gum', jobs.build_args(j, jobs.Options(), 'make_base.py', python='py'))
 
+    def test_base_direction_dropdown_maps_to_options(self):
+        import os
+        os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+        from PySide6.QtWidgets import QApplication
+        QApplication.instance() or QApplication([])
+        from dentalbase_gui import app as A
+        w = A.MainWindow()
+        got = {}
+        for key in ('bite', 'tips', 'mid', 'gum'):
+            w.cmb_base.setCurrentIndex(w.cmb_base.findData(key))
+            o = w.options(); got[key] = (o.follow_tips, o.follow_mid, o.follow_gum)
+        self.assertEqual(got, {'bite': (False, False, False), 'tips': (True, False, False),
+                               'mid': (False, True, False), 'gum': (False, False, True)})
+        w.btn_reset.click(); self.assertEqual(w.cmb_base.currentData(), 'bite')
+
     def test_follow_tips_option(self):
         j = jobs.Job('single', ['/a/u.stl'], ['/a/u_output.stl'])
         self.assertNotIn('--follow-tips', jobs.build_args(j, jobs.Options(), 'make_base.py', python='py'))

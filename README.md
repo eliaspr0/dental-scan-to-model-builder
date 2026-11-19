@@ -112,7 +112,7 @@ These are checked automatically after every export, by reloading the file that w
 | Margin on the tongue / palate side | `--offset-lingual` | same as margin height | Optional. When set, `--offset` applies to the lip / cheek side only and this value to the tongue / palate side. |
 | Base thickness | `--thickness` | 0.5 mm | Thickness of the flat base under the lowest point of the model (0.1 mm and up). |
 | Articulated pair | `--pair` | off | Process an upper and lower scan together so both bases are parallel to the shared bite plane. |
-| Base direction | `--follow-gum` | bite plane (the app opens on *Gum line*) | Tilts the flat bottom (up to 30°) to the plane that best fits the cut line, so wall plus base is as even as possible all around the arch. In a pair, each jaw follows its own gum line. |
+| Base direction | `--follow-gum`, `--follow-mid` | bite plane | *Halfway* (`--follow-mid`) uses a plane midway between the tooth tips and the gum line. *Gum line* (`--follow-gum`): Tilts the flat bottom (up to 30°) to the plane that best fits the cut line, so wall plus base is as even as possible all around the arch. In a pair, each jaw follows its own gum line. |
 | Base follows the tooth tips | `--follow-tips` | off | Tilts the flat bottom (up to 10°) so it runs parallel to the incisal edges and cusp tips instead of the estimated bite plane. In a pair, each jaw follows its own tips. If the tip plane is more than 10° away, the normal plane is used. |
 | Blend width (Advanced) | `--strip` | auto | Width of the strip along the cut edge where the scan follows the smoothed line. |
 
@@ -159,6 +159,7 @@ python verify.py upper_model.stl
 | `--thickness` | 0.5 | base thickness below the lowest scan point, mm |
 | `--follow-tips` | off | base parallel to the tooth tips (limit 10°) |
 | `--follow-gum` | off | base parallel to the gum line / trimline (limit 30°) for an even wall height |
+| `--follow-mid` | off | base parallel to a plane halfway between the tooth tips and the gum line (limit 30°) |
 | `--trim-mode` | base | `base`: smooth wall, scan altered only in the edge strip. `deform`: legacy mode that also blends the smoothing into the surface within ~5 mm of the trimline |
 | `--preview` | off | write a PNG render next to each output |
 | `--pair A B` / `--pair-out A B` | | articulated pair; explicit output paths |

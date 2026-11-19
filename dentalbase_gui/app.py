@@ -234,10 +234,12 @@ class MainWindow(QMainWindow):
         self.cmb_base = QComboBox()
         self.cmb_base.addItem('Bite plane', 'bite')
         self.cmb_base.addItem('Tooth tips', 'tips')
+        self.cmb_base.addItem('Halfway: tips and gum line', 'mid')
         self.cmb_base.addItem('Gum line (even wall height)', 'gum')
         self.cmb_base.setToolTip('Which way the flat bottom faces. Bite plane: parallel to the estimated bite plane. Tooth tips: parallel to a '
                                  'plane through the incisal edges and cusp tips (up to 10 degrees away). Gum line: parallel to the plane that '
                                  'best fits the cut line, so wall plus base is as even as possible all around the arch (up to 30 degrees). '
+                                 'Halfway: a plane midway between the tooth-tip plane and the gum-line plane. '
                                  'In an articulated pair each jaw follows its own tips / gum line, so the two bases are then no longer exactly '
                                  'parallel. Teeth and coordinates are never modified.')
         self.cmb_base.setCurrentIndex(self.cmb_base.findData(J.APP_DEFAULTS['base_dir']))
@@ -298,7 +300,8 @@ class MainWindow(QMainWindow):
 
     def options(self):
         return J.Options(self.sp_offset.value(), self.sp_smooth.value(), self.sp_sigma.value(), self.sp_thick.value(), self.sp_strip.value(), self.cmb_base.currentData() == 'tips',
-                         self.sp_ling.value() if self.chk_ling.isChecked() else 0.0, self.cmb_base.currentData() == 'gum')
+                         self.sp_ling.value() if self.chk_ling.isChecked() else 0.0,
+                         self.cmb_base.currentData() == 'gum', self.cmb_base.currentData() == 'mid')
 
     def _reset_defaults(self):
         self.sp_offset.setValue(J.APP_DEFAULTS['offset']); self.sp_smooth.setValue(J.APP_DEFAULTS['smooth'])
