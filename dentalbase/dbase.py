@@ -627,33 +627,27 @@ def drop_nonmanifold_faces(F):
 
 
 def _min_area_fan(P, existing, ids):
-    """Minimum-total-area triangulation of a small closed 3D polygon (O(n^3) DP). Diagonals that already exist as mesh edges are
-    forbidden (they would create a non-manifold edge). Returns (n-2, 3) local indices or None."""
+    """Minimum-total-area triangulation of a small closed 3D polygon (O(n^3) DP, vectorised over the split point). Diagonals that
+    already exist as mesh edges are forbidden (they would create a non-manifold edge). Returns (n-2, 3) local indices or None."""
     n = len(P)
     INF = 1e30
-    def ok(i, j):
-        if j == i + 1 or (i == 0 and j == n - 1):
-            return True
-        return tuple(sorted((int(ids[i]), int(ids[j])))) not in existing
-    def area(i, j, k):
-        return 0.5 * float(np.linalg.norm(np.cross(P[j] - P[i], P[k] - P[i])))
     cost = np.full((n, n), INF); split = np.zeros((n, n), int)
     for i in range(n - 1):
         cost[i, i + 1] = 0.0
+    idl = [int(x) for x in ids]
     for span in range(2, n):
         for i in range(0, n - span):
             j = i + span
-            if not ok(i, j):
+            if not (i == 0 and j == n - 1) and tuple(sorted((idl[i], idl[j]))) in existing:
                 continue
-            best = INF; bk = -1
-            for k in range(i + 1, j):
-                c = cost[i, k] + cost[k, j]
-                if c >= INF:
-                    continue
-                c += area(i, k, j)
-                if c < best:
-                    best = c; bk = k
-            cost[i, j] = best; split[i, j] = bk
+            k = np.arange(i + 1, j)
+            c = cost[i, k] + cost[k, j]
+            if c.min() >= INF:
+                continue
+            ar = 0.5 * np.linalg.norm(np.cross(P[k] - P[i], P[j] - P[i]), axis=1)
+            tot = np.where(c >= INF, INF, c + ar)
+            m = int(np.argmin(tot))
+            cost[i, j] = tot[m]; split[i, j] = k[m]
     if cost[0, n - 1] >= INF:
         return None
     out = []; st = [(0, n - 1)]
@@ -694,7 +688,7 @@ def fill_small_holes(V, F, max_len_mm=60.0):
             Q = Q * np.array([1.0, -1.0])
         T = np.asarray(earcut.triangulate_float64(np.ascontiguousarray(Q, dtype=np.float64), np.array([n], dtype=np.uint32))).reshape(-1, 3)
         if len(T) != n - 2:
-            T = _min_area_fan(V[rev], existing, rev) if n <= 150 else None   # degenerate sliver loop: fall back to a 3D min-area triangulation
+            T = _min_area_fan(V[rev], existing, rev) if n <= 600 else None   # degenerate sliver loop: fall back to a 3D min-area triangulation
             if T is None:
                 skipped += 1; continue
             add.append(rev[T]); filled += 1; largest = max(largest, length)

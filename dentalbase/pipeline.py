@@ -318,7 +318,11 @@ def make_base(path_in, path_out, offset=4.5, smooth_t=6.0, loop_sigma=2.0, base_
         V3, alpha, it = dbase.safe_displace(V2, F2, D)
         log(t0, f'loop smoothed (max shift {maxd:.2f} mm, {int((alpha < 1).sum())} verts backed off)')
     stage(6, verbose)
-    Vb, Fb, info = dbase.build_base(V3, F2, base_thickness=base_thickness, bottom_path=bottom_path)
+    try:
+        Vb, Fb, info = dbase.build_base(V3, F2, base_thickness=base_thickness, bottom_path=bottom_path)
+    except AssertionError as e:
+        raise ScanError('The scan has an open area that could not be closed automatically (' + str(e) + '). '
+                        'Close the large holes in the scan first (for example in your scanner software), then try again.') from None
     stage(7, verbose)
     # ---- back to the scan's original coordinate system (keeps upper/lower articulation)
     Vb_o = Vb @ R + c
